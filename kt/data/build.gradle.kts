@@ -7,4 +7,5 @@ dependencies {
     implementation(project(":domain"))
     implementation(libs.commons.csv)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.pdfbox)
 }

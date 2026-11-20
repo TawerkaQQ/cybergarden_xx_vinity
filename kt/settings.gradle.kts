@@ -7,7 +7,6 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         mavenCentral()
         google()
@@ -16,4 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "cybergarden-vinity"
 
-include(":domain", ":data", ":cli", ":viewer")
+include(":domain", ":api", ":data", ":cli", ":server", ":app")
