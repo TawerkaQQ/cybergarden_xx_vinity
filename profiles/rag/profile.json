@@ -1,0 +1,141 @@
+{
+  "name": "rag",
+  "title": "Retrieval-Augmented Generation",
+  "scope": "Системы, которые находят сведения во внешней коллекции документов и используют найденный контекст при формировании ответа; статья описывает конфигурацию и результаты оценки. Решение по содержанию, а не по слову RAG в заголовке.",
+  "submission": "data/rag/submission_template",
+  "tables": [
+    {
+      "name": "publications",
+      "file": "publications.csv",
+      "id": "publication_id",
+      "columns": ["publication_id", "title", "year", "DOI", "authors", "in_scope", "exclusion_reason"],
+      "references": {},
+      "lists": ["authors"],
+      "vocabularies": {"in_scope": ["true", "false"]},
+      "units": {},
+      "descriptions": {
+        "authors": "авторы через ;",
+        "exclusion_reason": "почему статья вне области, только при in_scope=false"
+      }
+    },
+    {
+      "name": "configurations",
+      "file": "configurations.csv",
+      "id": "config_id",
+      "columns": ["publication_id", "config_id", "rag_variant", "retrieval_method", "retriever_model", "embedding_model", "embedding_version", "chunking_method", "chunk_size", "chunk_overlap", "chunk_unit", "index_type", "vector_store", "top_k", "reranker_model", "generator_model", "generator_version", "prompt_strategy", "context_strategy", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {},
+      "units": {},
+      "descriptions": {
+        "rag_variant": "название системы, baseline или ablation-варианта из статьи; каждый генератор и вариант — отдельная конфигурация",
+        "retrieval_method": "исходная формулировка: BM25, dense, hybrid",
+        "chunk_size": "только число; диапазон — пусто, а диапазон в note",
+        "index_type": "не выводить из vector_store и наоборот",
+        "top_k": "число извлекаемых элементов; не путать с k метрики"
+      }
+    },
+    {
+      "name": "datasets",
+      "file": "datasets.csv",
+      "id": "dataset_id",
+      "columns": ["publication_id", "dataset_id", "dataset_name", "dataset_version", "language", "data_split", "scientific_domain", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {},
+      "units": {},
+      "descriptions": {
+        "dataset_name": "разные версии и разбиения, участвующие в разных сравнениях, — разные записи"
+      }
+    },
+    {
+      "name": "tasks",
+      "file": "tasks.csv",
+      "id": "task_id",
+      "columns": ["publication_id", "task_id", "task_type", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {},
+      "units": {},
+      "descriptions": {"task_type": "свободный текст, например multi-hop question answering"}
+    },
+    {
+      "name": "experiments",
+      "file": "experiments.csv",
+      "id": "experiment_id",
+      "columns": ["publication_id", "experiment_id", "evaluation_protocol", "baseline_name", "hardware", "latency_ms", "tokens_per_query", "sample_size", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {},
+      "units": {"latency_ms": {"unit_column": null, "target": "ms"}},
+      "descriptions": {
+        "evaluation_protocol": "протокол, условия, способ расчёта, ограничения сравнения",
+        "latency_ms": "в миллисекундах, исходная запись — в note; зависящую от конфигурации задержку оформлять результатом",
+        "sample_size": "размер оценочной выборки, не всего датасета"
+      }
+    },
+    {
+      "name": "results",
+      "file": "results.csv",
+      "id": "result_id",
+      "columns": ["publication_id", "result_id", "experiment_id", "config_id", "dataset_id", "task_id", "metric_group", "metric_name", "metric_variant", "metric_direction", "metric_k", "metric_value", "metric_unit", "baseline_value", "aggregation", "sample_size", "raw_value", "raw_unit", "normalized_value", "normalized_unit", "result_origin", "cited_publication_id", "source_page", "source_section", "source_table", "source_figure", "source_fragment", "extraction_status", "duplicate_of", "note"],
+      "references": {"experiment_id": "experiments", "config_id": "configurations", "dataset_id": "datasets", "task_id": "tasks", "duplicate_of": "results"},
+      "lists": [],
+      "vocabularies": {
+        "metric_direction": ["higher_is_better", "lower_is_better", "target"],
+        "result_origin": ["primary", "cited"],
+        "extraction_status": ["extracted", "present_not_extractable", "absent"]
+      },
+      "units": {},
+      "descriptions": {
+        "metric_group": "группа по смыслу источника: answer quality, retrieval quality, efficiency",
+        "metric_name": "как в статье",
+        "metric_variant": "определение: token-level F1, macro, judge-based",
+        "metric_k": "k для метрик @k",
+        "baseline_value": "только для сопоставимых задачи, набора, метрики, шкалы и протокола",
+        "aggregation": "открытое поле, только при явном указании: mean, mean across queries, median, upper_95CI",
+        "raw_value": "запись как в статье, включая знаки, ≈ и диапазоны",
+        "normalized_value": "число в шкале статьи: .204 — 0.204 fraction, 45.2% — 45.2 %; доли и проценты не пересчитываются по одному имени метрики"
+      }
+    }
+  ],
+  "values": {
+    "table": "results",
+    "columns": {
+      "id": "result_id",
+      "metric": "metric_name",
+      "raw_value": "raw_value",
+      "raw_unit": "raw_unit",
+      "value": "normalized_value",
+      "unit": "normalized_unit",
+      "aggregation": "aggregation",
+      "origin": "result_origin",
+      "cited": "cited_publication_id",
+      "page": "source_page",
+      "section": "source_section",
+      "table": "source_table",
+      "figure": "source_figure",
+      "fragment": "source_fragment",
+      "status": "extraction_status",
+      "duplicate_of": "duplicate_of",
+      "note": "note"
+    },
+    "mirrors": {"metric_value": "normalized_value", "metric_unit": "normalized_unit"},
+    "metrics": {},
+    "duplicate_key": ["experiment_id", "config_id", "dataset_id", "task_id", "metric", "metric_variant", "metric_k", "unit", "aggregation", "sample_size", "origin", "cited", "value"],
+    "match": {
+      "loose": ["value", "page", "origin"],
+      "strict": ["metric", "value", "origin", "metric_k", "page"]
+    }
+  },
+  "issues": {"table": "issues", "file": "issues.csv"},
+  "sources": {"table_fragment": "literal", "text_variants": ["pypdf", "pymupdf", "ocr"]},
+  "units": {
+    "aliases": {"milliseconds": "ms", "msec": "ms", "seconds": "s", "sec": "s"},
+    "conversions": [
+      {"from": "s", "to": "ms", "factor": 1000}
+    ]
+  },
+  "ranges": {},
+  "checks": ["metric_scale", "metric_k", "percent_vs_points", "duplicate_consistency", "contradiction"]
+}
