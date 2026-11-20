@@ -1,3 +1,2 @@
-anthropic==2.11.0
-pydantic==2.14.4
+openai==3.57.0
 pypdf==7.1.1
