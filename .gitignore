@@ -1,3 +1,26 @@
+data/*
+work/
+out/
+
+.gradle/
+build/
+out/**/build/
+.kotlin/
+.idea/
+*.iml
+local.properties
+
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+.env
+*.log
+.DS_Store
+Thumbs.db
+
+# Python
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
