@@ -1,35 +1,29 @@
 import hashlib
 from collections.abc import Callable
 from pathlib import Path
-
-from pydantic import BaseModel
+from typing import Any
 
 from pipeline.domain.article import Article
-from pipeline.domain.extract import ArticleMentions, ArticleStructure
 from pipeline.domain.ports import ExtractionModel
 from pipeline.infrastructure.json_files import read_json, write_json
 
 
 class CachedExtractionModel:
-    def __init__(self, model: ExtractionModel, directory: Path, prompt_version: str):
+    def __init__(self, model: ExtractionModel, directory: Path, key: str):
         self._model = model
         self._directory = directory
-        self._prompt_version = prompt_version
+        self._key = key
 
-    def structure(self, article: Article) -> ArticleStructure:
-        return self._cached(article, "structure", ArticleStructure, lambda: self._model.structure(article))
+    def structure(self, article: Article) -> dict[str, Any]:
+        return self._cached(article, "structure", lambda: self._model.structure(article))
 
-    def mentions(self, article: Article, structure: ArticleStructure) -> ArticleMentions:
-        return self._cached(article, "mentions", ArticleMentions, lambda: self._model.mentions(article, structure))
+    def mentions(self, article: Article, structure: dict[str, Any]) -> dict[str, Any]:
+        return self._cached(article, "mentions", lambda: self._model.mentions(article, structure))
 
-    def _cached[T: BaseModel](self, article: Article, step: str, model: type[T], compute: Callable[[], T]) -> T:
-        path = self._path(article, step)
+    def _cached(self, article: Article, step: str, compute: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        path = self._directory / hashlib.sha256(article.content).hexdigest() / self._key / f"{step}.json"
         if path.exists():
-            return model.model_validate(read_json(path))
+            return read_json(path)
         result = compute()
-        write_json(path, result.model_dump(mode="json"))
+        write_json(path, result)
         return result
-
-    def _path(self, article: Article, step: str) -> Path:
-        digest = hashlib.sha256(article.content).hexdigest()
-        return self._directory / f"{digest}-{self._prompt_version}" / f"{step}.json"

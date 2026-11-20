@@ -9,4 +9,4 @@ class JsonExtractStore:
         self._directory = directory
 
     def save(self, result: ExtractResult) -> None:
-        write_json(self._directory / f"{result.publication_id}.json", result.model_dump(mode="json"))
+        write_json(self._directory / f"{result.publication_id}.json", result.to_json())

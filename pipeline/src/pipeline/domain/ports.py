@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from pipeline.domain.article import Article
-from pipeline.domain.extract import ArticleMentions, ArticleStructure, ExtractResult
+from pipeline.domain.extract import ExtractResult
 
 
 class ArticleReader(Protocol):
@@ -17,7 +17,11 @@ class ExtractStore(Protocol):
     def save(self, result: ExtractResult) -> None: ...
 
 
-class ExtractionModel(Protocol):
-    def structure(self, article: Article) -> ArticleStructure: ...
+class LanguageModel(Protocol):
+    def complete(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]: ...
 
-    def mentions(self, article: Article, structure: ArticleStructure) -> ArticleMentions: ...
+
+class ExtractionModel(Protocol):
+    def structure(self, article: Article) -> dict[str, Any]: ...
+
+    def mentions(self, article: Article, structure: dict[str, Any]) -> dict[str, Any]: ...
