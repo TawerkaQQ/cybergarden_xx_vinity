@@ -1,0 +1,183 @@
+{
+  "name": "solar",
+  "title": "Тонкоплёночные солнечные элементы",
+  "scope": "Статьи, в которых изготовлены и измерены тонкоплёночные солнечные элементы: перовскиты, CIGS, CdTe, кестериты, Sb2Se3, тонкоплёночный кремний и другие. Расчётные и модельные работы без изготовленных образцов — вне области.",
+  "submission": "data/solar/submission_template",
+  "tables": [
+    {
+      "name": "publications",
+      "file": "publications.csv",
+      "id": "publication_id",
+      "columns": ["publication_id", "title", "year", "DOI", "authors", "in_scope", "exclusion_reason"],
+      "references": {},
+      "lists": ["authors"],
+      "vocabularies": {"in_scope": ["true", "false"]},
+      "units": {},
+      "descriptions": {
+        "authors": "авторы через ;",
+        "exclusion_reason": "почему статья вне области, только при in_scope=false"
+      }
+    },
+    {
+      "name": "materials",
+      "file": "materials.csv",
+      "id": "material_id",
+      "columns": ["publication_id", "material_id", "material_name_raw", "formula_normalized", "material_class", "dimensionality", "additives", "bandgap_value", "bandgap_unit", "bandgap_method", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {
+        "material_class": ["perovskite", "CIGS", "CdTe", "kesterite", "Sb2Se3", "thin-film Si", "other"],
+        "dimensionality": ["3D", "2D", "2D-3D"],
+        "bandgap_method": ["Tauc", "EQE", "PL", "cited"],
+        "bandgap_unit": ["eV"]
+      },
+      "units": {"bandgap_value": {"unit_column": "bandgap_unit", "target": "eV"}},
+      "descriptions": {
+        "material_name_raw": "поглотитель как назван в статье",
+        "formula_normalized": "для перовскита вид A-B-X; пусто, если состав дан только навесками",
+        "dimensionality": "только для перовскитов",
+        "bandgap_value": "ширина зоны поглотителя, не ETL и не HTM"
+      }
+    },
+    {
+      "name": "devices",
+      "file": "devices.csv",
+      "id": "device_id",
+      "columns": ["publication_id", "device_id", "absorber_material_id", "device_label", "device_role", "device_type", "architecture", "substrate_type", "active_area", "area_unit", "area_definition", "encapsulation", "note"],
+      "references": {"absorber_material_id": "materials"},
+      "lists": [],
+      "vocabularies": {
+        "device_role": ["control", "target", "record"],
+        "device_type": ["cell", "minimodule", "module"],
+        "architecture": ["n-i-p", "p-i-n", "substrate", "superstrate"],
+        "substrate_type": ["rigid", "flexible"],
+        "area_unit": ["cm2"],
+        "area_definition": ["designated illumination", "aperture", "total"]
+      },
+      "units": {"active_area": {"unit_column": "area_unit", "target": "cm2"}},
+      "descriptions": {
+        "device_label": "как прибор назван в статье: строка таблицы, образец",
+        "architecture": "перовскиты — n-i-p или p-i-n; CIGS, кестериты, Sb2Se3 на Mo — substrate; CdTe на стекле с TCO — superstrate"
+      }
+    },
+    {
+      "name": "layers",
+      "file": "layers.csv",
+      "id": "layer_id",
+      "columns": ["publication_id", "layer_id", "device_id", "layer_order", "layer_function", "layer_material", "layer_thickness", "thickness_unit", "deposition_method", "annealing_temperature", "annealing_time", "atmosphere", "note"],
+      "references": {"device_id": "devices"},
+      "lists": [],
+      "vocabularies": {
+        "layer_function": ["front_contact", "ETL", "absorber", "passivation", "HTL", "interlayer", "recombination", "back_contact"],
+        "thickness_unit": ["nm"]
+      },
+      "units": {"layer_thickness": {"unit_column": "thickness_unit", "target": "nm"}},
+      "descriptions": {
+        "layer_order": "номер слоя от подложки, с 1; подложку не записываем",
+        "layer_function": "CdS и подобные буферы — ETL; i-ZnO, ZnO:Al, металлическая сетка — front_contact; просветляющее покрытие и барьеры — interlayer",
+        "annealing_temperature": "в °C",
+        "annealing_time": "с единицей из статьи, например 10 min"
+      }
+    },
+    {
+      "name": "measurements",
+      "file": "measurements.csv",
+      "id": "measurement_id",
+      "columns": ["publication_id", "measurement_id", "device_id", "measurement_type", "spectrum", "light_intensity", "intensity_unit", "scan_direction", "scan_rate", "mask_used", "certified", "certification_lab", "temperature", "stability_protocol", "stress_conditions", "note"],
+      "references": {"device_id": "devices"},
+      "lists": ["device_id"],
+      "vocabularies": {
+        "measurement_type": ["J-V", "MPP tracking", "EQE", "stability"],
+        "scan_direction": ["reverse", "forward", "average"],
+        "mask_used": ["true", "false"],
+        "certified": ["true", "false"],
+        "stability_protocol": ["ISOS-D", "ISOS-L", "ISOS-T", "other"]
+      },
+      "units": {},
+      "descriptions": {
+        "scan_direction": "прямой и обратный ход — разные измерения",
+        "spectrum": "как в статье: AM1.5G, 1 sun, halogen lamp (non-standard)",
+        "light_intensity": "как в статье, без пересчёта: 100 и mW/cm2 или 1000 и W/m2",
+        "stability_protocol": "ISOS не назван — other, условия в stress_conditions"
+      }
+    },
+    {
+      "name": "results",
+      "file": "results.csv",
+      "id": "result_id",
+      "columns": ["publication_id", "result_id", "device_id", "measurement_id", "material_id", "metric_name", "metric_value", "metric_unit", "aggregation", "spread_value", "n_devices", "time_point", "time_unit", "raw_value", "raw_unit", "normalized_value", "normalized_unit", "result_origin", "cited_publication_id", "source_page", "source_section", "source_table", "source_figure", "source_fragment", "extraction_status", "duplicate_of", "note"],
+      "references": {"device_id": "devices", "measurement_id": "measurements", "material_id": "materials", "duplicate_of": "results"},
+      "lists": [],
+      "vocabularies": {
+        "aggregation": ["champion", "mean", "median"],
+        "result_origin": ["primary", "cited"],
+        "extraction_status": ["extracted", "present_not_extractable", "absent"]
+      },
+      "units": {},
+      "descriptions": {
+        "aggregation": "только если в статье сказано: best/champion/record — champion, average — mean; иначе пусто",
+        "spread_value": "± или стандартное отклонение, если указано",
+        "time_point": "момент измерения для стабильности"
+      }
+    }
+  ],
+  "values": {
+    "table": "results",
+    "columns": {
+      "id": "result_id",
+      "metric": "metric_name",
+      "raw_value": "raw_value",
+      "raw_unit": "raw_unit",
+      "value": "normalized_value",
+      "unit": "normalized_unit",
+      "aggregation": "aggregation",
+      "origin": "result_origin",
+      "cited": "cited_publication_id",
+      "page": "source_page",
+      "section": "source_section",
+      "table": "source_table",
+      "figure": "source_figure",
+      "fragment": "source_fragment",
+      "status": "extraction_status",
+      "duplicate_of": "duplicate_of",
+      "note": "note"
+    },
+    "mirrors": {"metric_value": "normalized_value", "metric_unit": "normalized_unit"},
+    "metrics": {
+      "PCE": "%", "Voc": "V", "Jsc": "mA/cm2", "FF": "%", "Rs": "Ohm*cm2", "Rsh": "Ohm*cm2",
+      "HI": "%", "Jsc_EQE": "mA/cm2", "stabilized_PCE": "%", "T80": "h", "retained_PCE": "%"
+    },
+    "duplicate_key": ["device_id", "measurement_id", "metric", "aggregation", "value"],
+    "match": {
+      "loose": ["metric", "value", "origin"],
+      "strict": ["metric", "value", "origin", "aggregation", "page"]
+    }
+  },
+  "issues": {"table": "issues", "file": "issues.csv"},
+  "sources": {"table_fragment": "row_label", "text_variants": ["pypdf"]},
+  "units": {
+    "aliases": {
+      "mA cm−2": "mA/cm2", "mA cm-2": "mA/cm2", "mA/cm²": "mA/cm2", "mA·cm−2": "mA/cm2", "mAcm−2": "mA/cm2", "mA cm^-2": "mA/cm2",
+      "Ω cm2": "Ohm*cm2", "Ω·cm2": "Ohm*cm2", "Ω cm²": "Ohm*cm2", "Ω·cm²": "Ohm*cm2", "Ohm cm2": "Ohm*cm2",
+      "kΩ cm2": "kOhm*cm2", "kΩ·cm2": "kOhm*cm2", "kΩ cm²": "kOhm*cm2",
+      "cm²": "cm2", "mm²": "mm2", "µm": "um", "μm": "um", "Å": "angstrom",
+      "hours": "h", "hour": "h", "hrs": "h", "days": "day", "minutes": "min"
+    },
+    "conversions": [
+      {"from": "mV", "to": "V", "factor": 0.001},
+      {"from": "fraction", "to": "%", "factor": 100},
+      {"from": "A/m2", "to": "mA/cm2", "factor": 0.1},
+      {"from": "kOhm*cm2", "to": "Ohm*cm2", "factor": 1000},
+      {"from": "um", "to": "nm", "factor": 1000},
+      {"from": "angstrom", "to": "nm", "factor": 0.1},
+      {"from": "mm2", "to": "cm2", "factor": 0.01},
+      {"from": "day", "to": "h", "factor": 24},
+      {"from": "min", "to": "h", "factor": 0.016666666666666666}
+    ]
+  },
+  "ranges": {
+    "PCE": [0, 35], "stabilized_PCE": [0, 35], "Voc": [0.05, 1.6], "Jsc": [0.1, 50], "Jsc_EQE": [0.1, 50],
+    "FF": [20, 90], "HI": [-50, 100], "Rs": [0, 1000], "Rsh": [1, 10000000], "retained_PCE": [0, 120], "T80": [0, 100000]
+  },
+  "checks": ["jv_consistency", "voc_limit", "range", "eqe_consistency", "champion_vs_mean", "hysteresis_index", "contradiction"]
+}

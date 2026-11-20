@@ -1,0 +1,113 @@
+{
+  "name": "generic",
+  "title": "Любая научная статья",
+  "scope": "Эмпирические статьи с измеренными или вычисленными величинами. Обзоры и эссе без собственных чисел — вне области.",
+  "submission": null,
+  "tables": [
+    {
+      "name": "publications",
+      "file": "publications.csv",
+      "id": "publication_id",
+      "columns": ["publication_id", "title", "year", "DOI", "authors", "field_of_study", "in_scope", "exclusion_reason"],
+      "references": {},
+      "lists": ["authors"],
+      "vocabularies": {"in_scope": ["true", "false"]},
+      "units": {},
+      "descriptions": {"field_of_study": "предметная область статьи своими словами"}
+    },
+    {
+      "name": "entities",
+      "file": "entities.csv",
+      "id": "entity_id",
+      "columns": ["publication_id", "entity_id", "entity_type", "name_raw", "name_normalized", "role", "description", "note"],
+      "references": {},
+      "lists": [],
+      "vocabularies": {
+        "entity_type": ["material", "device", "sample", "method", "model", "system", "dataset", "organism", "other"],
+        "role": ["studied", "control", "baseline", "reference"]
+      },
+      "units": {},
+      "descriptions": {
+        "name_raw": "как названо в статье",
+        "role": "studied — то, что предлагают авторы; control и baseline — с чем сравнивают"
+      }
+    },
+    {
+      "name": "conditions",
+      "file": "conditions.csv",
+      "id": "condition_id",
+      "columns": ["publication_id", "condition_id", "entity_id", "kind", "description", "parameters", "note"],
+      "references": {"entity_id": "entities"},
+      "lists": ["entity_id"],
+      "vocabularies": {},
+      "units": {},
+      "descriptions": {
+        "kind": "что за условия: измерение, эксперимент, протокол, режим",
+        "parameters": "параметры как key=value через ;"
+      }
+    },
+    {
+      "name": "values",
+      "file": "values.csv",
+      "id": "value_id",
+      "columns": ["publication_id", "value_id", "entity_id", "condition_id", "property", "raw_value", "raw_unit", "normalized_value", "normalized_unit", "aggregation", "spread_value", "sample_size", "result_origin", "cited_publication_id", "source_page", "source_section", "source_table", "source_figure", "source_fragment", "extraction_status", "duplicate_of", "note"],
+      "references": {"entity_id": "entities", "condition_id": "conditions", "duplicate_of": "values"},
+      "lists": [],
+      "vocabularies": {
+        "aggregation": ["champion", "mean", "median"],
+        "result_origin": ["primary", "cited"],
+        "extraction_status": ["extracted", "present_not_extractable", "absent"]
+      },
+      "units": {},
+      "descriptions": {"property": "измеряемая величина как названа в статье"}
+    }
+  ],
+  "values": {
+    "table": "values",
+    "columns": {
+      "id": "value_id",
+      "metric": "property",
+      "raw_value": "raw_value",
+      "raw_unit": "raw_unit",
+      "value": "normalized_value",
+      "unit": "normalized_unit",
+      "aggregation": "aggregation",
+      "origin": "result_origin",
+      "cited": "cited_publication_id",
+      "page": "source_page",
+      "section": "source_section",
+      "table": "source_table",
+      "figure": "source_figure",
+      "fragment": "source_fragment",
+      "status": "extraction_status",
+      "duplicate_of": "duplicate_of",
+      "note": "note"
+    },
+    "mirrors": {},
+    "metrics": {},
+    "duplicate_key": ["entity_id", "condition_id", "metric", "aggregation", "value"],
+    "match": {
+      "loose": ["value", "page", "origin"],
+      "strict": ["metric", "value", "origin", "page"]
+    }
+  },
+  "issues": {"table": "issues", "file": "issues.csv"},
+  "sources": {"table_fragment": "literal", "text_variants": ["pypdf", "pymupdf", "ocr"]},
+  "units": {
+    "aliases": {"µm": "um", "μm": "um", "°C": "degC", "℃": "degC", "milliseconds": "ms", "seconds": "s", "hours": "h", "days": "day"},
+    "conversions": [
+      {"from": "mV", "to": "V", "factor": 0.001},
+      {"from": "kV", "to": "V", "factor": 1000},
+      {"from": "mA", "to": "A", "factor": 0.001},
+      {"from": "µA", "to": "A", "factor": 0.000001},
+      {"from": "mW", "to": "W", "factor": 0.001},
+      {"from": "kW", "to": "W", "factor": 1000},
+      {"from": "kPa", "to": "Pa", "factor": 1000},
+      {"from": "MPa", "to": "Pa", "factor": 1000000},
+      {"from": "GPa", "to": "Pa", "factor": 1000000000},
+      {"from": "ms", "to": "s", "factor": 0.001}
+    ]
+  },
+  "ranges": {},
+  "checks": ["contradiction", "champion_vs_mean", "duplicate_consistency"]
+}
