@@ -1,70 +1,137 @@
-PROMPT_VERSION = "1"
+import hashlib
+import json
+from typing import Any
 
-SYSTEM_PROMPT = """\
-Ты эксперт-аннотатор научных статей о тонкоплёночных солнечных элементах: перовскиты, CIGS, CdTe, кестериты, Sb2Se3, тонкоплёночный кремний. По статье собирается набор данных: публикация, материалы поглотителя, приборы со слоями, условия измерения и все упоминания значений показателей. Набор сверяют с экспертной разметкой, поэтому важны точность и полнота.
+from pipeline.domain.article import Article
+from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
+from pipeline.domain.profile import Table
 
-Статья дана дважды: как PDF (смотри таблицы и рисунки по картинкам страниц) и как текст каждой страницы, извлечённый pypdf, между маркерами «=== Страница N ===». Номер страницы — номер страницы PDF, считая с 1, а не номер страницы журнала.
+ENGINE_VERSION = "2"
+ROW_LABEL = "row_label"
+
+SYSTEM = """\
+Ты аннотатор научных статей. По статье собирается набор данных области «{title}». Его сверяют с экспертной разметкой, поэтому важны и точность, и полнота.
+
+Что относится к области: {scope}
+
+Статья дана текстом страниц, извлечённым из PDF, между маркерами «=== Страница N ===». N — номер страницы PDF, считая с 1, а не номер страницы журнала.
 
 Общие правила:
-- Только то, что написано в статье. Неизвестное — пустая строка "" (для чисел 0), никаких догадок и восстановления по смыслу. Пустое значение лучше выдуманного.
-- Ничего не пересчитывай и не переводи единицы: значения и единицы ровно как в статье.
-- Цитаты (quote) копируй дословно из текста страницы pypdf, а не с картинки: те же символы, пробелы, лигатуры, переносы и знаки минуса. Цитата — короткий непрерывный фрагмент одной строки текста страницы, 4–15 слов, без многоточий и склеек, в нём должно быть само число.
-- Примечания (note, exclusion_reason) пиши по-русски, коротко. В note уходит исходная формулировка, если она не укладывается в словарь, и важные оговорки.
-- Значения словарей — строго из схемы ответа. Если формулировка статьи не укладывается в словарь, ставь ближайшее допустимое значение или "", а исходную формулировку — в note.
+- Только то, что написано в статье. Неизвестное — null. Пустое значение лучше выдуманного.
+- Значения и единицы — как в статье, строками, без пересчёта и перевода единиц.
+- Для поля со списком допустимых значений — только значение из списка или null. Если формулировка статьи не укладывается в список, исходную формулировку пиши в note.
+- key — короткий ключ записи, уникальный внутри статьи: имя таблицы и номер, например {example_key}. В refs — key записей той таблицы, на которую указывает ссылка.
+- Примечания (note, exclusion_reason) — по-русски, коротко.
 
-Область кейса: статья относится к предметной области (in_scope=true), если авторы сами изготовили и измерили образцы тонкоплёночных солнечных элементов или плёнок поглотителя. Расчётные, модельные и чисто теоретические работы без изготовленных образцов (DFT, молекулярная динамика, SCAPS и другое численное моделирование) — in_scope=false, exclusion_reason по-русски объясняет почему, остальные разделы пустые.
+Таблицы набора данных:
 
-Материалы поглотителя:
-- Каждый вариант поглотителя (состав, концентрация добавки, температура или способ получения, легирование) — отдельный материал со своим key: m1, m2, …
-- material_name_raw — как в статье; formula — химическая формула поглотителя, для перовскитов с раскрытыми MA, FA, Cs, если формула в статье есть; additives — добавки и их количество как в статье.
-- material_class: perovskite, CIGS, CdTe, kesterite (CZTS, CZTSe, CZTSSe), Sb2Se3, thin-film Si, other.
-- dimensionality — только для перовскитов и только если ясно из статьи: 3D, 2D, 2D-3D.
-- bandgap — ширина запрещённой зоны только поглотителя, не ETL, не HTL и не подложки. method: Tauc (из графика Таука или спектра поглощения), EQE, PL; значение из литературы или общее сведение во введении — cited. raw — как в статье, например «1.55 eV». page и quote — где это написано. Нет значения — все поля пустые.
+{guide}
 
-Приборы:
-- Каждый сравниваемый в статье образец солнечного элемента (контроль и варианты) — отдельный прибор со своим key: d1, d2, … label — подпись образца как в статье (строка таблицы, легенда).
-- material_key — key материала поглотителя этого прибора.
-- role: control — контрольный/референсный образец; target — образцы, которые предлагают и исследуют авторы; record — лучший прибор, отдельно заявленный как рекордный. Если сравнения нет, единственный прибор — target.
-- device_type: cell; мини-модуль — minimodule; модуль — module.
-- architecture: перовскиты — n-i-p (обычная, ETL снизу) или p-i-n (инвертированная, HTL снизу); CIGS, кестериты, Sb2Se3 на Mo или другом тыльном контакте снизу — substrate; CdTe и другие на стекле с TCO, свет через подложку — superstrate.
-- substrate_type: rigid (стекло) или flexible (полимер, фольга) — если ясно из статьи.
-- area: raw — площадь как в статье («0.1 cm2», «6 mm2»), definition — aperture (маска, апертура), designated illumination, total — только если сказано.
-- layers — полный стек слоёв каждого прибора от подложки вверх; саму подложку (стекло, фольгу, полимер) не пиши, первым идёт контакт на подложке (FTO, ITO, Mo). function: front_contact, ETL, absorber, passivation, HTL, interlayer, recombination, back_contact. CdS и аналогичные n-буферы — ETL; i-ZnO, ZnO:Al, ITO-окно, металлическая сетка — front_contact; просветляющее покрытие, барьеры и прочие промежуточные слои — interlayer, исходное название — в note. material — материал слоя как в статье, можно с кратким уточнением состава; thickness_raw — толщина как в статье («100 nm», «1.2 µm»); deposition_method — способ нанесения с ключевыми параметрами; annealing_temperature («100 °C»), annealing_time («10 min»), atmosphere — только если указаны для этого слоя. Общие слои повторяй в каждом приборе полностью.
+Правила области:
 
-Условия измерения:
-- Каждое отдельное условие измерения — свой key: ms1, ms2, … device_keys — все приборы, измеренные в этих условиях.
-- type: J-V (освещённая и темновая ВАХ; темновая — с примечанием в note), MPP tracking (стабилизированный КПД, отслеживание точки максимальной мощности), EQE, stability (испытания стабильности во времени).
-- Прямой и обратный ход развёртки — разные измерения (scan_direction forward / reverse; average — если приведено среднее по двум ходам). Освещение спереди и сзади — разные измерения.
-- spectrum («AM1.5G»), intensity_raw («100 mW/cm2», «1000 W/m2»), scan_rate, temperature — как в статье. mask_used и certified — "true"/"false", только если из статьи ясно; certified=false, если нет упоминания о сертификации независимой лабораторией. certification_lab — если есть.
-- Для stability: stability_protocol — ISOS-D, ISOS-L, ISOS-T, если протокол назван; если не назван — other, а условия (атмосфера, влажность, температура, освещение, хранение в темноте) — в stress_conditions.
-
-Показатели (metric):
-- PCE — КПД; Voc — напряжение холостого хода; Jsc — плотность тока короткого замыкания из ВАХ; FF — фактор заполнения; Rs, Rsh — последовательное и шунтирующее сопротивление; HI — индекс гистерезиса; Jsc_EQE — ток, проинтегрированный по спектру EQE; stabilized_PCE — стабилизированный КПД при отслеживании точки максимальной мощности или в установившемся режиме; T80 — время падения КПД до 80 % начального; retained_PCE — доля сохранённого начального КПД после испытания.
-"""
+{rules}"""
 
 STRUCTURE_TASK = """\
-Проход A. Заполни публикацию, in_scope, материалы поглотителя, приборы со слоями и условия измерения.
+Проход A. Заполни publication и records.
 
-- publication: title — точное название статьи; year — год публикации; doi — без префикса https://doi.org/; authors — все авторы в порядке статьи в виде «Фамилия И.О.»; in_scope и exclusion_reason по правилам области.
-- Если in_scope=false — materials, devices и measurements пустые.
-- Собери все приборы, которые сравниваются в таблицах, на графиках ВАХ и в тексте, и все условия их измерения, включая стабильность, MPP и EQE. От этого зависит привязка значений во втором проходе.
-"""
+- publication: title — точное название статьи; year — год публикации; DOI — без префикса https://doi.org/; authors — все авторы в порядке статьи через «; »; in_scope — относится ли статья к области; exclusion_reason — почему статья вне области, только при in_scope=false.
+- records: все записи каждой таблицы, кроме упоминаний значений. Собери всё, что сравнивается в таблицах, на графиках и в тексте, и все условия, при которых получены значения. От этого зависит привязка значений во втором проходе.
+- Если in_scope=false — все списки в records пустые."""
 
 MENTIONS_TASK = """\
-Проход B. Найди все упоминания значений показателей PCE, Voc, Jsc, FF, Rs, Rsh, HI, Jsc_EQE, stabilized_PCE, T80, retained_PCE во всей статье и привяжи их к приборам и измерениям из прохода A (дан ниже в JSON). Другие показатели (Jmpp, Vmpp, дефицит Voc, AVT и прочие) не выписывай.
+Проход B. Найди все упоминания значений во всей статье и привяжи их к записям прохода A (результат прохода A — в конце).
 
-Правила:
-- Каждое упоминание значения — отдельный элемент mentions: аннотация, текст, каждая таблица, подписи к рисункам, числа, подписанные прямо на рисунке. Повторы одного и того же значения в разных местах не схлопывай: каждое место — свой элемент.
-- Каждая ячейка таблицы со значением показателя — отдельный элемент. Для таблиц quote = «Table N, строка <подпись строки>» (используй обозначение таблицы как в статье: Table 1, TABLE 1), table = «Table N»; для значений из текста table пустое, quote — дословная цитата из текста страницы.
-- raw_value — число как в статье, без единицы и без ±; raw_unit — единица как в статье («%», «mV», «V», «mA/cm2», «mA cm−2», «Ω cm2», «h»); если показатель дан долей без единицы (FF 0.71, HI 0.089) — raw_unit «fraction».
-- aggregation — только если в статье прямо сказано: best, champion, record, maximum, highest → champion; average, mean → mean; median → median. «typical», «representative» и отсутствие указания → "". В таблице со строками или столбцами «best» и «average» каждое значение получает свою агрегацию.
-- Среднее ± отклонение → aggregation mean, spread_raw — число после ±, n_devices — число приборов, если указано.
-- Значения из чужих работ (введение, обсуждение, сравнение с литературой, рекорды, предел Шокли–Квайссера, строки таблиц сравнения с прошлыми работами) → origin=cited, cited_ref — ссылка как в статье («[12]», «ref. [11]», «Bai et al., 2018»), device_key и measurement_key пустые. Собственные результаты авторов → origin=primary.
-- Значение есть только в supplementary или только как кривая на графике без подписанного числа → status=present_not_extractable, raw_value и raw_unit пустые, quote — фраза статьи, которая на него ссылается. Иначе status=extracted.
-- Не выписывай производные числа: разности строк таблицы, «improved by 3.6%», «increases Voc by 80 mV», относительные приросты и отношения.
-- Фразу с максимумами разных приборов («up to 41% and 0.46 V») раскладывай по своим приборам. Одинаковые числа у разных приборов — разные упоминания разных приборов.
-- device_key — прибор из прохода A, к которому относится значение; measurement_key — условие измерения (ход развёртки, освещение, стабильность, MPP, EQE). Если значение относится к ходу развёртки, бери измерение с этим ходом.
-- Стабильность: retained_PCE с time_point_raw («1000 h»); начальный КПД перед испытанием тоже выписывай как PCE. T80 — время как в статье.
-- page — страница PDF, где стоит это упоминание; section — заголовок раздела как в статье («Abstract», «3.3 The Current and Voltage Testing»); figure — рисунок, к которому относится значение («Figure 7»), если есть.
-- note по-русски — только если есть важная оговорка.
-"""
+- Каждое упоминание — отдельный элемент mentions: аннотация, текст, каждая ячейка с значением в каждой таблице, подписи к рисункам, числа, подписанные на рисунке. Повторы одного значения в разных местах не схлопывай: каждое место — свой элемент.
+- page — страница, где стоит упоминание; section — заголовок раздела как в статье; table — обозначение таблицы как в статье («Table 1»), если значение из таблицы; figure — рисунок, к которому относится значение.
+- quote — дословный непрерывный фрагмент текста страницы page, 4–15 слов, с самим числом: те же символы, пробелы и знаки минуса, без многоточий и склеек.{row_label}
+- metric — название показателя.{metrics}
+- raw_value — число как в статье, без единицы и без ±; raw_unit — единица рядом с числом как в статье; unit — только если единицы рядом нет, но она ясна из шкалы или заголовка (доля без единицы — fraction), иначе null.
+- origin — {origins}. Для чисел из чужих работ (введение, обсуждение, сравнение с литературой, рекорды) cited — ссылка как в статье («[12]», «Bai et al., 2018»), refs — null.
+- status — {statuses}. Значение есть только в supplementary или только кривой без подписанного числа — raw_value=null, quote — фраза статьи, которая на него ссылается.
+- refs — key записей прохода A, к которым относится значение.
+- Не выписывай производные числа: разности, приросты, отношения, если правила области не говорят иначе."""
+
+ROW_LABEL_RULE = " Для значения из таблицы допустимо quote = «Table N, строка <подпись строки>»."
+METRICS_RULE = " Оцениваемые показатели называй ровно так: {names}. Остальные — как в статье."
+
+
+class PromptBook:
+    def __init__(self, shape: ExtractionShape):
+        profile = shape.profile
+        self._shape = shape
+        self.system = SYSTEM.format(
+            title=profile.title,
+            scope=profile.scope,
+            example_key=f"{shape.records[0].table.name}1, {shape.records[0].table.name}2" if shape.records else "item1",
+            guide=self._guide(),
+            rules=profile.rules.strip(),
+        )
+        self.structure_task = STRUCTURE_TASK
+        self.mentions_task = MENTIONS_TASK.format(
+            row_label=ROW_LABEL_RULE if profile.table_fragment == ROW_LABEL else "",
+            metrics=METRICS_RULE.format(names=", ".join(profile.values.metrics)) if profile.values.metrics else "",
+            origins=self._choices("origin"),
+            statuses=self._choices("status"),
+        )
+        self.version = f"{profile.name}-{ENGINE_VERSION}-{self._digest()}"
+
+    def structure_request(self, article: Article) -> str:
+        return f"{article_text(article)}\n\n{self.structure_task}"
+
+    def mentions_request(self, article: Article, structure: dict[str, Any]) -> str:
+        passed = json.dumps(structure, ensure_ascii=False, indent=1)
+        return f"{article_text(article)}\n\n{self.mentions_task}\n\nРезультат прохода A:\n{passed}"
+
+    def _guide(self) -> str:
+        shape = self._shape
+        profile = shape.profile
+        sections = [self._section(f"publication ({profile.publications.name})", profile.publications, shape.publication_columns, {})]
+        sections += [self._section(f"records.{record.table.name}", record.table, record.fields, record.refs) for record in shape.records]
+        mention = shape.mention
+        header = f"mentions — упоминания значений ({mention.table.name})"
+        renamed = [f"{key} — {column}" for key, column in mention.columns.items() if key != column]
+        if renamed:
+            header += f"\nКлючи упоминания и колонки {mention.table.name} в правилах области: {', '.join(renamed)}"
+        if profile.values.metrics:
+            units = ", ".join(f"{metric} ({unit})" for metric, unit in profile.values.metrics.items())
+            header += f"\nОцениваемые показатели и целевые единицы: {units}"
+        sections.append(self._section(header, mention.table, mention.fields, mention.refs))
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _section(header: str, table: Table, fields: tuple[str, ...], refs: dict[str, str]) -> str:
+        lines = [f"### {header}"]
+        if fields:
+            lines.append("fields:")
+            lines += [f"- {describe_column(table, column)}" for column in fields if column != IN_SCOPE]
+        if refs:
+            lines.append("refs:")
+            for column, target in refs.items():
+                many = ", список key" if column in table.lists else ""
+                lines.append(f"- {column} → {target}{many}")
+        return "\n".join(lines)
+
+    def _choices(self, key: str) -> str:
+        values = self._shape.mention.vocabulary(key)
+        return " | ".join(values) if values else "как в статье"
+
+    def _digest(self) -> str:
+        payload = json.dumps(
+            [self.system, self.structure_task, self.mentions_task, self._shape.structure_schema(), self._shape.mentions_schema()],
+            ensure_ascii=False,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()[:8]
+
+
+def describe_column(table: Table, column: str) -> str:
+    parts = [column]
+    if column in table.vocabularies and column not in table.unit_columns:
+        parts.append(f": {' | '.join(table.vocabularies[column])}")
+    if column in table.descriptions:
+        parts.append(f" — {table.descriptions[column]}")
+    return "".join(parts)
+
+
+def article_text(article: Article) -> str:
+    pages = "\n\n".join(f"=== Страница {page.number} ===\n{page.text}" for page in article.pages)
+    return f"Статья {article.publication_id}. Текст страниц:\n\n{pages}"
