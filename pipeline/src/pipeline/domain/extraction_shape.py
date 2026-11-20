@@ -25,7 +25,9 @@ CONTRACT_MENTION_ORDER = (
     "status", "page", "section", "table", "figure", "quote", "note",
 )
 NULLABLE_STRING = {"type": ["string", "null"]}
+NULLABLE_VALUE = {"type": ["string", "number", "null"]}
 STRING = {"type": "string"}
+VERBATIM_MENTION_KEYS = ("page", "refs", "fields")
 
 
 def strict_object(properties: dict[str, Any]) -> dict[str, Any]:
@@ -35,7 +37,17 @@ def strict_object(properties: dict[str, Any]) -> dict[str, Any]:
 def column_schema(table: Table, column: str) -> dict[str, Any]:
     if column in table.vocabularies and column not in table.unit_columns:
         return {"enum": [*table.vocabularies[column], None]}
-    return NULLABLE_STRING
+    return NULLABLE_VALUE
+
+
+def as_text(value: Any) -> Any:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return value
+
+
+def texts(values: dict[str, Any]) -> dict[str, Any]:
+    return {name: as_text(value) for name, value in values.items()}
 
 
 def ref_schema(table: Table, column: str) -> dict[str, Any]:
@@ -71,20 +83,20 @@ class MentionShape:
         return strict_object(
             {
                 "page": {"type": "integer"},
-                "section": NULLABLE_STRING,
-                "table": NULLABLE_STRING,
-                "figure": NULLABLE_STRING,
+                "section": NULLABLE_VALUE,
+                "table": NULLABLE_VALUE,
+                "figure": NULLABLE_VALUE,
                 "quote": STRING,
                 "metric": STRING,
-                "raw_value": NULLABLE_STRING,
-                "raw_unit": NULLABLE_STRING,
-                "unit": NULLABLE_STRING,
+                "raw_value": NULLABLE_VALUE,
+                "raw_unit": NULLABLE_VALUE,
+                "unit": NULLABLE_VALUE,
                 "fields": strict_object({column: column_schema(self.table, column) for column in self.fields}),
                 "refs": strict_object({column: ref_schema(self.table, column) for column in self.refs}),
                 "origin": self._required_vocabulary("origin"),
-                "cited": NULLABLE_STRING,
+                "cited": NULLABLE_VALUE,
                 "status": self._required_vocabulary("status"),
-                "note": NULLABLE_STRING,
+                "note": NULLABLE_VALUE,
             }
         )
 
@@ -121,9 +133,14 @@ class ExtractionShape:
     def result(
         self, publication_id: str, prompt_version: str, structure: dict[str, Any], mentions: dict[str, Any]
     ) -> ExtractResult:
-        publication = structure["publication"]
+        publication = texts(structure["publication"])
         in_scope = bool(publication.get(IN_SCOPE))
-        records = {shape.table.name: structure["records"][shape.table.name] if in_scope else [] for shape in self.records}
+        records = {
+            shape.table.name: [{**record, "fields": texts(record["fields"])} for record in structure["records"][shape.table.name]]
+            if in_scope
+            else []
+            for shape in self.records
+        }
         keys = {table: {record["key"] for record in items} for table, items in records.items()}
         linked_records = {
             shape.table.name: [self._linked(record, shape.refs, keys) for record in records[shape.table.name]]
@@ -172,4 +189,5 @@ class ExtractionShape:
 
     @staticmethod
     def _contract_mention(mention: dict[str, Any]) -> dict[str, Any]:
-        return {key: mention[key] for key in CONTRACT_MENTION_ORDER}
+        contract = {key: mention[key] if key in VERBATIM_MENTION_KEYS else as_text(mention[key]) for key in CONTRACT_MENTION_ORDER}
+        return {**contract, "fields": texts(mention["fields"])}
