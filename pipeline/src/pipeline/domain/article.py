@@ -12,4 +12,5 @@ class Article:
     publication_id: str
     content: bytes
     pages: tuple[Page, ...]
-    parser: str
+    text_variant: str
+    tool_version: str

@@ -11,7 +11,7 @@ class JsonPagesStore:
     def save(self, article: Article) -> None:
         payload = {
             "publication_id": article.publication_id,
-            "parser": article.parser,
-            "pages": [{"page": page.number, "text": page.text} for page in article.pages],
+            "pages": [{"page": page.number, "texts": {article.text_variant: page.text}} for page in article.pages],
+            "tools": {article.text_variant: article.tool_version},
         }
         write_json(self._directory / f"{article.publication_id}.json", payload)
