@@ -1,0 +1,17 @@
+[versions]
+kotlin = "2.1.0"
+compose = "1.7.3"
+serialization = "1.7.3"
+commons-csv = "1.12.0"
+pdfbox = "3.0.3"
+
+[libraries]
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+commons-csv = { module = "org.apache.commons:commons-csv", version.ref = "commons-csv" }
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.compose", version.ref = "compose" }
