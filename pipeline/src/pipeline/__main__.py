@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     extract.add_argument("--profiles", type=Path, default=Path("profiles"))
     extract.add_argument("--base-url", help="адрес API vLLM, по умолчанию OPENAI_BASE_URL")
     extract.add_argument("--model", default=DEFAULT_MODEL)
-    extract.add_argument("--max-tokens", type=int, default=32768)
+    extract.add_argument("--max-tokens", type=int, default=24576)
     extract.add_argument("--thinking", action="store_true")
     extract.add_argument("--workers", type=int, default=4)
     extract.add_argument("--attempts", type=int, default=3)
