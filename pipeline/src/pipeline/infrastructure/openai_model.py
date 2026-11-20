@@ -28,18 +28,24 @@ class OpenAiCompatibleModel:
         raise ModelResponseError(" | ".join(failures))
 
     def _request(self, system: str, user: str, schema: dict[str, Any], temperature: float) -> dict[str, Any]:
-        response = self._client.chat.completions.create(
+        stream = self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             temperature=temperature,
             max_tokens=self._max_tokens,
+            stream=True,
             response_format={
                 "type": "json_schema",
                 "json_schema": {"name": "extraction", "schema": schema, "strict": True},
             },
             extra_body={"chat_template_kwargs": {"enable_thinking": self._thinking}},
         )
-        choice = response.choices[0]
-        if choice.finish_reason != "stop":
-            raise ModelResponseError(f"finish_reason={choice.finish_reason}")
-        return json.loads(choice.message.content)
+        parts = []
+        finish_reason = None
+        for chunk in stream:
+            for choice in chunk.choices:
+                parts.append(choice.delta.content or "")
+                finish_reason = choice.finish_reason or finish_reason
+        if finish_reason != "stop":
+            raise ModelResponseError(f"finish_reason={finish_reason}")
+        return json.loads("".join(parts))
