@@ -17,7 +17,7 @@ class JsonPageTextSource(private val directory: Path) : PageTextSource {
     override fun pages(publicationId: String): List<PageText>? = cache.getOrPut(publicationId) {
         val path = directory.resolve("$publicationId.json")
         if (!path.exists()) return@getOrPut null
-        json.decodeFromString<PagesDocument>(path.readText(Charsets.UTF_8)).pages.map { PageText(it.page, it.text) }
+        json.decodeFromString<PagesDocument>(path.readText(Charsets.UTF_8)).pages.map { PageText(it.page, it.texts) }
     }
 
     @Serializable
@@ -27,5 +27,5 @@ class JsonPageTextSource(private val directory: Path) : PageTextSource {
     )
 
     @Serializable
-    private data class PageDto(val page: Int, val text: String)
+    private data class PageDto(val page: Int, val texts: Map<String, String>)
 }

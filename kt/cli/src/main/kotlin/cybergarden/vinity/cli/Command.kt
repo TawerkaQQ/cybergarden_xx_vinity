@@ -4,44 +4,65 @@ sealed interface Command {
     data class Score(
         val candidate: String,
         val gold: String,
+        val profile: String?,
         val strict: Boolean,
         val byPublication: Boolean,
     ) : Command
 
-    data class Validate(val submission: String, val pages: String?) : Command
+    data class Validate(
+        val submission: String,
+        val profile: String?,
+        val pages: String?,
+        val articles: String?,
+    ) : Command
 
     companion object {
+        private val valued = setOf("--profile", "--pages", "--pdf")
+
         fun parse(args: Array<String>): Command? {
             val name = args.firstOrNull() ?: return null
-            val flags = args.drop(1).filter { it.startsWith("--") }.toSet()
-            val positional = positional(args.drop(1))
-            return when (name) {
-                "score" -> if (positional.size == 2) {
-                    Score(positional[0], positional[1], "--strict" in flags, "--by-publication" in flags)
-                } else null
-                "validate" -> if (positional.size == 1) {
-                    Validate(positional[0], option(args, "--pages"))
-                } else null
+            val arguments = Arguments.of(args.drop(1), valued) ?: return null
+            val positional = arguments.positional
+            return when {
+                name == "score" && positional.size == 2 -> Score(
+                    candidate = positional[0],
+                    gold = positional[1],
+                    profile = arguments.options["--profile"],
+                    strict = "--strict" in arguments.flags,
+                    byPublication = "--by-publication" in arguments.flags,
+                )
+                name == "validate" && positional.size == 1 -> Validate(
+                    submission = positional[0],
+                    profile = arguments.options["--profile"],
+                    pages = arguments.options["--pages"],
+                    articles = arguments.options["--pdf"],
+                )
                 else -> null
             }
         }
+    }
+}
 
-        private fun positional(args: List<String>): List<String> {
-            val valued = setOf("--pages")
-            val result = mutableListOf<String>()
-            var skipNext = false
-            args.forEach { arg ->
+private data class Arguments(
+    val positional: List<String>,
+    val flags: Set<String>,
+    val options: Map<String, String>,
+) {
+    companion object {
+        fun of(args: List<String>, valued: Set<String>): Arguments? {
+            val positional = mutableListOf<String>()
+            val flags = mutableSetOf<String>()
+            val options = mutableMapOf<String, String>()
+            val queue = ArrayDeque(args)
+            while (queue.isNotEmpty()) {
+                val arg = queue.removeFirst()
                 when {
-                    skipNext -> skipNext = false
-                    arg in valued -> skipNext = true
-                    arg.startsWith("--") -> Unit
-                    else -> result += arg
+                    arg in valued -> options[arg] = queue.removeFirstOrNull() ?: return null
+                    arg.startsWith("--") -> flags += arg
+                    else -> positional += arg
                 }
             }
-            return result
+            return Arguments(positional, flags, options)
         }
-
-        private fun option(args: Array<String>, name: String): String? =
-            args.indexOf(name).takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
     }
 }

@@ -1,23 +1,18 @@
 package cybergarden.vinity.domain.usecase
 
-import cybergarden.vinity.domain.model.ExtractionStatus
-import cybergarden.vinity.domain.model.MetricResult
+import cybergarden.vinity.domain.model.MatchMode
+import cybergarden.vinity.domain.model.Publications
+import cybergarden.vinity.domain.model.Record
 import cybergarden.vinity.domain.model.Submission
+import cybergarden.vinity.domain.model.ValuesSpec
 import kotlin.math.abs
 import kotlin.math.max
-
-enum class MatchMode { LOOSE, STRICT }
 
 data class Counts(val truePositive: Int = 0, val falsePositive: Int = 0, val falseNegative: Int = 0) {
     val precision: Double get() = ratio(truePositive, truePositive + falsePositive)
     val recall: Double get() = ratio(truePositive, truePositive + falseNegative)
     val f1: Double get() = if (precision + recall == 0.0) 0.0 else 2 * precision * recall / (precision + recall)
-
-    operator fun plus(other: Counts) = Counts(
-        truePositive + other.truePositive,
-        falsePositive + other.falsePositive,
-        falseNegative + other.falseNegative,
-    )
+    val support: Int get() = truePositive + falseNegative
 
     private fun ratio(part: Int, whole: Int) = if (whole == 0) 0.0 else part.toDouble() / whole
 }
@@ -26,6 +21,7 @@ data class ScopeAgreement(val agreed: Int, val total: Int)
 
 data class ScoreReport(
     val mode: MatchMode,
+    val matchedBy: List<String>,
     val publicationsScored: Int,
     val publicationsInGold: Int,
     val allMentions: Counts,
@@ -38,77 +34,68 @@ data class ScoreReport(
 class ScoreSubmission {
 
     operator fun invoke(candidate: Submission, gold: Submission, mode: MatchMode): ScoreReport {
-        val scoredIds = candidate.publications.map { it.publicationId }.toSet() intersect
+        val spec = gold.profile.values
+        val scored = candidate.publications.map { it.publicationId }.toSet() intersect
             gold.publications.map { it.publicationId }.toSet()
-        val candidateRows = candidate.results.filter { it.publicationId in scoredIds && it.isScored() }
-        val goldRows = gold.results.filter { it.publicationId in scoredIds && it.isScored() }
+        val candidateRows = candidate.values.filter { it.publicationId in scored && spec.isScored(it) }
+        val goldRows = gold.values.filter { it.publicationId in scored && spec.isScored(it) }
+        val matcher = Matcher(spec, spec.matchColumns(mode))
 
-        val byPublication = scoredIds.sorted().associateWith { id ->
-            match(candidateRows.filter { it.publicationId == id }, goldRows.filter { it.publicationId == id }, mode)
-        }
-        val byMetric = (candidateRows + goldRows).map { it.metricName }.distinct().sorted().associateWith { metric ->
-            scoredIds.fold(Counts()) { acc, id ->
-                acc + match(
-                    candidateRows.filter { it.publicationId == id && it.metricName == metric },
-                    goldRows.filter { it.publicationId == id && it.metricName == metric },
-                    mode,
-                )
+        fun countsBy(group: (Record) -> String?): Map<String, Counts> {
+            val candidateGroups = candidateRows.groupBy(group)
+            val goldGroups = goldRows.groupBy(group)
+            return (candidateGroups.keys + goldGroups.keys).filterNotNull().associateWith { key ->
+                matcher.count(candidateGroups[key].orEmpty(), goldGroups[key].orEmpty())
             }
-        }
-        val primaryRecords = scoredIds.fold(Counts()) { acc, id ->
-            acc + match(
-                candidateRows.filter { it.publicationId == id && it.duplicateOf == null },
-                goldRows.filter { it.publicationId == id && it.duplicateOf == null },
-                mode,
-            )
         }
 
         return ScoreReport(
             mode = mode,
-            publicationsScored = scoredIds.size,
+            matchedBy = spec.match[mode].orEmpty(),
+            publicationsScored = scored.size,
             publicationsInGold = gold.publications.size,
-            allMentions = byPublication.values.fold(Counts()) { acc, counts -> acc + counts },
-            primaryRecords = primaryRecords,
-            byMetric = byMetric,
-            byPublication = byPublication,
-            scope = scopeAgreement(candidate, gold, scoredIds),
+            allMentions = matcher.count(candidateRows, goldRows),
+            primaryRecords = matcher.count(
+                candidateRows.filter { it[spec.duplicateOf] == null },
+                goldRows.filter { it[spec.duplicateOf] == null },
+            ),
+            byMetric = countsBy { it[spec.metric] }.entries
+                .sortedWith(compareByDescending<Map.Entry<String, Counts>> { it.value.support }.thenBy { it.key })
+                .associate { it.key to it.value },
+            byPublication = countsBy { it.publicationId }.entries.sortedBy { it.key }.associate { it.key to it.value },
+            scope = scopeAgreement(candidate, gold, scored),
         )
     }
 
-    private fun MetricResult.isScored() =
-        scoredMetric != null && extractionStatus == ExtractionStatus.EXTRACTED && normalizedValue != null
+    private class Matcher(spec: ValuesSpec, columns: List<String>) {
+        private val valueColumn = spec.value
+        private val compareValue = valueColumn in columns
+        private val exactColumns = columns - valueColumn
 
-    private fun match(candidate: List<MetricResult>, gold: List<MetricResult>, mode: MatchMode): Counts {
-        val unmatched = gold.toMutableList()
-        var truePositive = 0
-        candidate.forEach { row ->
-            val hit = unmatched.firstOrNull { it.matches(row, mode) }
-            if (hit != null) {
-                unmatched.remove(hit)
-                truePositive++
+        fun count(candidate: List<Record>, gold: List<Record>): Counts {
+            val pool = gold.groupBy(::key).mapValues { it.value.toMutableList() }
+            val truePositive = candidate.count { row ->
+                val bucket = pool[key(row)] ?: return@count false
+                val hit = bucket.indexOfFirst { sameValue(it, row) }
+                if (hit >= 0) bucket.removeAt(hit)
+                hit >= 0
             }
+            return Counts(truePositive, candidate.size - truePositive, gold.size - truePositive)
         }
-        return Counts(truePositive, candidate.size - truePositive, unmatched.size)
-    }
 
-    private fun MetricResult.matches(other: MetricResult, mode: MatchMode): Boolean {
-        val base = metricName == other.metricName &&
-            origin == other.origin &&
-            sameValue(normalizedValue, other.normalizedValue)
-        return when (mode) {
-            MatchMode.LOOSE -> base
-            MatchMode.STRICT -> base && aggregation == other.aggregation && source.page == other.source.page
+        private fun key(row: Record): List<String?> = listOf(row.publicationId) + exactColumns.map { row[it] }
+
+        private fun sameValue(gold: Record, candidate: Record): Boolean {
+            if (!compareValue) return true
+            val expected = gold.number(valueColumn) ?: return false
+            val actual = candidate.number(valueColumn) ?: return false
+            return abs(expected - actual) <= VALUE_TOLERANCE * max(1.0, abs(expected))
         }
-    }
-
-    private fun sameValue(left: Double?, right: Double?): Boolean {
-        if (left == null || right == null) return false
-        return abs(left - right) <= VALUE_TOLERANCE * max(1.0, abs(right))
     }
 
     private fun scopeAgreement(candidate: Submission, gold: Submission, ids: Set<String>): ScopeAgreement {
-        val goldScope = gold.publications.associate { it.publicationId to it.inScope }
-        val agreed = candidate.publications.count { it.publicationId in ids && it.inScope == goldScope[it.publicationId] }
+        val expected = gold.publications.associate { it.publicationId to it[Publications.IN_SCOPE] }
+        val agreed = candidate.publications.count { it.publicationId in ids && it[Publications.IN_SCOPE] == expected[it.publicationId] }
         return ScopeAgreement(agreed, ids.size)
     }
 

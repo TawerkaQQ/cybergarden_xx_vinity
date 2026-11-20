@@ -1,14 +1,19 @@
 package cybergarden.vinity.api
 
 object ApiRoutes {
-    const val DATASETS = "/api/datasets"
-    const val DATASET = "$DATASETS/{dataset}"
-    const val SCORE = "$DATASET/score"
-    const val PAGE = "$DATASET/publications/{publication}/pages/{page}"
+    const val PROFILE_PARAMETER = "profile"
+    const val SET_PARAMETER = "set"
+    const val PUBLICATION_PARAMETER = "publication"
+    const val PAGE_PARAMETER = "page"
     const val FRAGMENT_PARAMETER = "fragment"
     const val STRICT_PARAMETER = "strict"
 
-    fun dataset(name: String) = "$DATASETS/$name"
-    fun score(name: String) = "${dataset(name)}/score"
-    fun page(name: String, publicationId: String, page: Int) = "${dataset(name)}/publications/$publicationId/pages/$page"
+    const val DATASETS = "/api/datasets"
+    const val DATASET = "$DATASETS/{$PROFILE_PARAMETER}/{$SET_PARAMETER}"
+    const val SCORE = "$DATASET/score"
+    const val PAGE = "$DATASET/publications/{$PUBLICATION_PARAMETER}/pages/{$PAGE_PARAMETER}"
+
+    fun dataset(ref: DatasetRef) = "$DATASETS/${ref.path}"
+    fun score(ref: DatasetRef) = "${dataset(ref)}/score"
+    fun page(ref: DatasetRef, publicationId: String, page: Int) = "${dataset(ref)}/publications/$publicationId/pages/$page"
 }

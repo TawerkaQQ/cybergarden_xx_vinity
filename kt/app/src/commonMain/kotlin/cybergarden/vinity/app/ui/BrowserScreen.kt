@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cybergarden.vinity.api.IssueDto
-import cybergarden.vinity.api.ResultDto
+import cybergarden.vinity.api.ValueDto
 import cybergarden.vinity.app.ViewerStore
 
 @Composable
@@ -36,7 +36,7 @@ fun BrowserScreen(store: ViewerStore) {
     Row(Modifier.fillMaxSize()) {
         PublicationList(store, Modifier.width(240.dp).fillMaxHeight())
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            ResultList(store, Modifier.weight(2f))
+            ValueList(store, Modifier.weight(2f))
             HorizontalDivider()
             IssueList(store, Modifier.weight(1f))
         }
@@ -70,19 +70,19 @@ private fun PublicationList(store: ViewerStore, modifier: Modifier) {
 }
 
 @Composable
-private fun ResultList(store: ViewerStore, modifier: Modifier) {
+private fun ValueList(store: ViewerStore, modifier: Modifier) {
     LazyColumn(modifier) {
-        items(store.results) { result ->
+        items(store.values) { value ->
             Row(
                 Modifier.fillMaxWidth()
-                    .background(highlight(result == store.selectedResult, MaterialTheme.colorScheme.primaryContainer))
-                    .clickable { store.selectResult(result) }
+                    .background(highlight(value == store.selectedValue, MaterialTheme.colorScheme.primaryContainer))
+                    .clickable { store.selectValue(value) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(result.metric, Modifier.width(110.dp), fontWeight = FontWeight.SemiBold)
-                Text(result.valueLabel(), Modifier.width(130.dp))
-                Text(result.contextLabel(), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(value.metric.orEmpty(), Modifier.width(110.dp), fontWeight = FontWeight.SemiBold)
+                Text(value.valueLabel(), Modifier.width(130.dp))
+                Text(value.contextLabel(), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -105,7 +105,7 @@ private fun IssueRow(issue: IssueDto, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        Text(issue.checkName, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+        Text(issue.checkName.orEmpty(), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
         Text(issue.description.orEmpty(), style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -131,15 +131,13 @@ private fun PagePreview(store: ViewerStore, modifier: Modifier) {
 private fun highlight(selected: Boolean, color: Color) =
     if (selected) color else MaterialTheme.colorScheme.surface
 
-private fun ResultDto.valueLabel(): String {
-    val number = value?.let { "$it ${unit.orEmpty()}" } ?: "—"
-    return spread?.let { "$number ± $it" } ?: number
-}
+private fun ValueDto.valueLabel(): String =
+    value?.let { "$it ${unit.orEmpty()}".trim() } ?: rawValue ?: "—"
 
-private fun ResultDto.contextLabel(): String = listOfNotNull(
-    if (origin == "cited") "цит. ${citedReference.orEmpty()}" else deviceId,
+private fun ValueDto.contextLabel(): String = listOfNotNull(
+    cited?.let { "цит. $it" },
+    links.values.joinToString(" ").ifEmpty { null },
     aggregation,
-    measurementId,
     page?.let { "стр. $it" },
     table ?: figure,
     duplicateOf?.let { "повтор $it" },

@@ -62,12 +62,12 @@ private fun TopBar(store: ViewerStore, screen: Screen, onScreen: (Screen) -> Uni
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Vinity", style = MaterialTheme.typography.titleLarge)
-        store.datasets.forEach { name ->
-            FilterChip(selected = store.dataset?.name == name, onClick = { store.open(name) }, label = { Text(name) })
+        store.datasets.forEach { ref ->
+            FilterChip(selected = store.dataset?.ref == ref, onClick = { store.open(ref) }, label = { Text(ref.path) })
         }
         store.dataset?.let {
             Text(
-                "статей ${it.publications.size} · приборов ${it.deviceCount} · значений ${it.results.size} · замечаний ${it.issues.size}",
+                "${it.title} · статей ${it.publications.size} · значений ${it.values.size} · замечаний ${it.issues.size}",
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )

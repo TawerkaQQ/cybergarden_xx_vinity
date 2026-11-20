@@ -1,8 +1,10 @@
 package cybergarden.vinity.server
 
 import cybergarden.vinity.api.ApiRoutes
+import cybergarden.vinity.api.DatasetRef
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Parameters
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
@@ -15,22 +17,22 @@ fun Route.vinityRoutes(service: DatasetService) {
     }
 
     get(ApiRoutes.DATASET) {
-        val dataset = service.dataset(call.parameters["dataset"].orEmpty())
+        val dataset = service.dataset(call.parameters.datasetRef())
         if (dataset == null) call.respond(HttpStatusCode.NotFound) else call.respond(dataset)
     }
 
     get(ApiRoutes.SCORE) {
         val strict = call.request.queryParameters[ApiRoutes.STRICT_PARAMETER].toBoolean()
-        val score = service.score(call.parameters["dataset"].orEmpty(), strict)
+        val score = service.score(call.parameters.datasetRef(), strict)
         if (score == null) call.respond(HttpStatusCode.NotFound) else call.respond(score)
     }
 
     get(ApiRoutes.PAGE) {
-        val page = call.parameters["page"]?.toIntOrNull()
+        val page = call.parameters[ApiRoutes.PAGE_PARAMETER]?.toIntOrNull()
         val image = page?.let {
             service.page(
-                name = call.parameters["dataset"].orEmpty(),
-                publicationId = call.parameters["publication"].orEmpty(),
+                ref = call.parameters.datasetRef(),
+                publicationId = call.parameters[ApiRoutes.PUBLICATION_PARAMETER].orEmpty(),
                 page = it,
                 fragment = call.request.queryParameters[ApiRoutes.FRAGMENT_PARAMETER],
             )
@@ -44,3 +46,6 @@ fun Route.vinityRoutes(service: DatasetService) {
         }
     }
 }
+
+private fun Parameters.datasetRef() =
+    DatasetRef(get(ApiRoutes.PROFILE_PARAMETER).orEmpty(), get(ApiRoutes.SET_PARAMETER).orEmpty())

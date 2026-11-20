@@ -31,7 +31,7 @@ fun QualityScreen(store: ViewerStore) {
         }
         val score = store.score
         if (score == null) {
-            Text("Для набора «${store.dataset?.name.orEmpty()}» нет эталона.", Modifier.padding(top = 16.dp))
+            Text("Для набора «${store.dataset?.ref?.path.orEmpty()}» нет эталона.", Modifier.padding(top = 16.dp))
         } else {
             ScoreTable(score)
         }
@@ -41,7 +41,7 @@ fun QualityScreen(store: ViewerStore) {
 @Composable
 private fun ScoreTable(score: ScoreDto) {
     Text(
-        "Статей оценено: ${score.publicationsScored} из ${score.publicationsInGold}. In_scope совпал: ${score.scopeAgreed} из ${score.scopeTotal}.",
+        "Совпадают ${score.matchedBy.joinToString()}. Статей оценено: ${score.publicationsScored} из ${score.publicationsInGold}. In_scope совпал: ${score.scopeAgreed} из ${score.scopeTotal}.",
         Modifier.padding(vertical = 12.dp),
     )
     HeaderRow("Срез")

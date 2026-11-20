@@ -5,16 +5,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import cybergarden.vinity.api.DatasetDto
+import cybergarden.vinity.api.DatasetRef
 import cybergarden.vinity.api.IssueDto
 import cybergarden.vinity.api.PublicationDto
-import cybergarden.vinity.api.ResultDto
 import cybergarden.vinity.api.ScoreDto
+import cybergarden.vinity.api.ValueDto
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 class ViewerStore(private val client: VinityClient, private val scope: CoroutineScope) {
 
-    var datasets by mutableStateOf(emptyList<String>())
+    var datasets by mutableStateOf(emptyList<DatasetRef>())
         private set
     var dataset by mutableStateOf<DatasetDto?>(null)
         private set
@@ -24,7 +25,7 @@ class ViewerStore(private val client: VinityClient, private val scope: Coroutine
         private set
     var selectedPublication by mutableStateOf<PublicationDto?>(null)
         private set
-    var selectedResult by mutableStateOf<ResultDto?>(null)
+    var selectedValue by mutableStateOf<ValueDto?>(null)
         private set
     var selectedIssue by mutableStateOf<IssueDto?>(null)
         private set
@@ -33,8 +34,8 @@ class ViewerStore(private val client: VinityClient, private val scope: Coroutine
     var error by mutableStateOf<String?>(null)
         private set
 
-    val results: List<ResultDto>
-        get() = dataset?.results?.filter { it.publicationId == selectedPublication?.id }.orEmpty()
+    val values: List<ValueDto>
+        get() = dataset?.values?.filter { it.publicationId == selectedPublication?.id }.orEmpty()
 
     val issues: List<IssueDto>
         get() = dataset?.issues?.filter { it.publicationId == selectedPublication?.id }.orEmpty()
@@ -44,43 +45,43 @@ class ViewerStore(private val client: VinityClient, private val scope: Coroutine
         datasets.firstOrNull()?.let(::open)
     }
 
-    fun open(name: String) = request {
-        val loaded = client.dataset(name)
+    fun open(ref: DatasetRef) = request {
+        val loaded = client.dataset(ref)
         dataset = loaded
         selectPublication(loaded.publications.firstOrNull())
-        score = client.score(name, strict)
+        score = client.score(ref, strict)
     }
 
     fun toggleStrict() {
         strict = !strict
-        val name = dataset?.name ?: return
-        request { score = client.score(name, strict) }
+        val ref = dataset?.ref ?: return
+        request { score = client.score(ref, strict) }
     }
 
     fun selectPublication(publication: PublicationDto?) {
         selectedPublication = publication
-        selectedResult = null
+        selectedValue = null
         selectedIssue = null
         page = null
     }
 
-    fun selectResult(result: ResultDto) {
-        selectedResult = result
+    fun selectValue(value: ValueDto) {
+        selectedValue = value
         selectedIssue = null
-        showPage(result.publicationId, result.page, result.fragment)
+        showPage(value.publicationId, value.page, value.fragment)
     }
 
     fun selectIssue(issue: IssueDto) {
         selectedIssue = issue
-        selectedResult = null
+        selectedValue = null
         showPage(issue.publicationId, issue.page, issue.fragment)
     }
 
     private fun showPage(publicationId: String, number: Int?, fragment: String?) {
         page = null
-        val name = dataset?.name ?: return
+        val ref = dataset?.ref ?: return
         if (number == null) return
-        request { page = client.page(name, publicationId, number, fragment)?.toImageBitmap() }
+        request { page = client.page(ref, publicationId, number, fragment)?.toImageBitmap() }
     }
 
     private fun request(block: suspend () -> Unit) {

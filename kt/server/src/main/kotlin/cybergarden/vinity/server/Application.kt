@@ -1,5 +1,6 @@
 package cybergarden.vinity.server
 
+import cybergarden.vinity.data.Workspace
 import cybergarden.vinity.data.csv.CsvSubmissionRepository
 import cybergarden.vinity.data.pdf.PdfBoxPageRenderer
 import io.ktor.http.HttpMethod
@@ -16,7 +17,7 @@ import java.nio.file.Path
 fun main() {
     val root = Path.of(System.getProperty("vinity.root") ?: "..").toAbsolutePath().normalize()
     val port = System.getProperty("vinity.port")?.toIntOrNull() ?: 8081
-    val service = DatasetService(root, CsvSubmissionRepository(), PdfBoxPageRenderer())
+    val service = DatasetService(Workspace(root), CsvSubmissionRepository(), PdfBoxPageRenderer())
     embeddedServer(Netty, port = port) { vinity(service) }.start(wait = true)
 }
 
