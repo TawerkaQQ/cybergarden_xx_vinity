@@ -4,3 +4,4 @@ gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
 *.pdf binary
+*.csv text eol=crlf
