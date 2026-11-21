@@ -6,6 +6,8 @@ from pipeline.domain.profile import Profile
 
 SQUASHED = re.compile(r"[\s*·⋅]+")
 LETTERS = re.compile(r"[A-Za-z]+")
+PYPDF_MINUS = "/C0"
+NEGATIVE_POWER = re.compile(r"^\s*(\S+?)\s*[·*⋅]?\s*([A-Za-zµμΩ]+)\s*[-−–]\s*(\d)\s*$")
 
 
 @dataclass(frozen=True)
@@ -16,7 +18,7 @@ class Converted:
 
 
 def squash(unit: str) -> str:
-    text = unicodedata.normalize("NFKC", unit).replace("−", "-").replace("–", "-").replace("Ω", "Ohm").replace("μ", "u")
+    text = unicodedata.normalize("NFKC", unit).replace(PYPDF_MINUS, "-").replace("−", "-").replace("–", "-").replace("Ω", "Ohm").replace("μ", "u")
     return SQUASHED.sub("", text)
 
 
@@ -38,7 +40,11 @@ class UnitBook:
     def canonical(self, unit: str | None) -> str:
         if not unit:
             return ""
-        return self._canonical.get(squash(unit), unit.strip())
+        divided = per_unit(unit)
+        return self._canonical.get(squash(unit)) or self._canonical.get(squash(divided), divided)
+
+    def knows(self, unit: str) -> bool:
+        return squash(unit) in self._canonical or per_unit(unit) != unit.strip()
 
     def convert(self, value: float | None, unit: str | None, target: str | None) -> Converted:
         source = self.canonical(unit)
@@ -60,3 +66,11 @@ class UnitBook:
 def leading_letters(unit: str) -> str:
     match = LETTERS.match(squash(unit))
     return match.group() if match else ""
+
+
+def per_unit(unit: str) -> str:
+    match = NEGATIVE_POWER.match(unit.replace(PYPDF_MINUS, "-"))
+    if not match:
+        return unit.strip()
+    numerator, denominator, power = match.groups()
+    return f"{numerator}/{denominator}{'' if power == '1' else power}"

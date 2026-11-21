@@ -1,3 +1,4 @@
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,9 @@ LIST_SEPARATOR = ";"
 NOTE = "note"
 TABLE_QUOTE_PREFIXES = ("table", "supplementary")
 ROW_LABEL_MARK = "строка"
+UNIT_SUFFIX = "_unit"
+NULL_WORDS = {"null", "none"}
+QUANTITY = re.compile(r"(-?\d+(?:[.,]\d+)?)\s*([^\d\s].*)")
 
 
 @dataclass
@@ -113,8 +117,22 @@ class Assembler:
             for column, target in shape.refs.items():
                 row[column] = reference(record["refs"].get(column), ids[target])
             self._normalize_units(table, row)
+            self._canonical_unit_spelling(table, shape.fields, row)
             rows.append(row)
         return rows
+
+    def _canonical_unit_spelling(self, table: Table, fields: tuple[str, ...], row: dict[str, str]) -> None:
+        unit_columns = set(table.unit_columns)
+        for column in fields:
+            text = row.get(column, "")
+            if not text:
+                continue
+            if column in unit_columns or column.endswith(UNIT_SUFFIX):
+                row[column] = self._units.canonical(text)
+                continue
+            quantity = QUANTITY.fullmatch(text)
+            if quantity and self._units.knows(quantity.group(2)):
+                row[column] = f"{quantity.group(1)} {self._units.canonical(quantity.group(2))}"
 
     def _normalize_units(self, table: Table, row: dict[str, str]) -> None:
         for column, unit in table.units.items():
@@ -251,7 +269,8 @@ def cell(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, list):
         return LIST_SEPARATOR.join(cell(item) for item in value)
-    return " ".join(str(value).split())
+    text = " ".join(str(value).split())
+    return "" if text.casefold() in NULL_WORDS else text
 
 
 def reference(value: Any, ids: dict[str, str]) -> str:
