@@ -185,7 +185,7 @@ class Assembler:
         if self._is_table_label(quote, mention):
             report["цитата: строка таблицы"] += 1
             row_label = quote.split(ROW_LABEL_MARK, 1)[1] if ROW_LABEL_MARK in quote else ""
-            page = locator.table_page(mention["table"], row_label, mention.get("page"))
+            page = locator.table_page(mention["table"], row_label, mention.get("page"), mention.get("raw_value"))
             row[values.column("page")] = str(page) if page else ""
             return
         located = locator.locate(quote, mention.get("page"), mention.get("raw_value"))

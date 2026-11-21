@@ -56,16 +56,31 @@ class QuoteLocator:
                     return Located(number, fragment, "по числу")
         return None
 
-    def table_page(self, table: str, row_label: str, page: int | None) -> int | None:
+    def table_page(self, table: str, row_label: str, page: int | None, raw_value: str | None = None) -> int | None:
         caption = re.compile(rf"(?im)^\s*{re.escape(collapse(table))}\b")
         captions = [number for number, text in self._texts() if caption.search(text)]
-        label = re.compile(rf"(?<!\w){re.escape(collapse(row_label))}(?!\w)", re.IGNORECASE) if row_label.strip() else None
         continued = sorted(set(captions) | {number + 1 for number in captions} & set(self._pages))
+        with_value = self._pages_with_row(row_label, raw_value)
+        in_table = [number for number in with_value if number in continued]
+        if in_table or with_value:
+            return (in_table or with_value)[0]
+        label = re.compile(rf"(?<!\w){re.escape(collapse(row_label))}(?!\w)", re.IGNORECASE) if row_label.strip() else None
         with_label = [number for number in continued if label and label.search(collapse(self._pages[number].text))]
         candidates = with_label or captions
         if not candidates:
             return page
         return min(candidates, key=lambda number: abs(number - (page or number)))
+
+    def _pages_with_row(self, row_label: str, raw_value: str | None) -> list[int]:
+        if not row_label.strip() or not raw_value or not raw_value.strip():
+            return []
+        label = re.compile(rf"(?<!\w){re.escape(collapse(row_label))}(?!\w)", re.IGNORECASE)
+        value = re.compile(rf"(?<![\d.]){re.escape(raw_value.strip())}(?!\d)")
+        return [
+            number
+            for number, text in self._texts()
+            if any(label.search(line) and value.search(line) for line in map(collapse, text.splitlines()))
+        ]
 
     def _texts(self) -> list[tuple[int, str]]:
         return [(number, normalized_page.text) for number, normalized_page in sorted(self._pages.items())]
