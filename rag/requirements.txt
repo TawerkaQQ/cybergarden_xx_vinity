@@ -1,8 +1,2 @@
-langchain
-langchain-qdrant
-langchain-ollama
-langchain-openai
-langchain-text-splitters
-qdrant-client
-python-dotenv
 pypdf
+python-dotenv

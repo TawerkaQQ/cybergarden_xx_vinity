@@ -1,52 +1,58 @@
+import sqlite3
+from collections.abc import Iterable
+from contextlib import closing
 from pathlib import Path
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams
-from langchain_qdrant import QdrantVectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
-from config import (
-    get_embeddings, get_embedding_dim, get_embedding_model_name,
-    get_chunk_size, get_chunk_overlap, QDRANT_URL, DATA_DIR,
-)
+from tempfile import TemporaryDirectory
 
-def get_collection_name() -> str:
-    model = get_embedding_model_name().replace(":", "_").replace("/", "_")
-    return f"docs_{model}"
+from pypdf import PdfReader
 
-def load_pdfs_from_data_dir() -> list:
-    """Загружает все PDF из data/rag/ и возвращает список Document."""
-    pdf_files = sorted(DATA_DIR.glob("*.pdf"))
+from config import DATA_DIR, INDEX_PATH
+from evidence import Fragment
+
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+
+
+def split_text(text: str) -> Iterable[str]:
+    start = 0
+    while start < len(text):
+        end = min(start + CHUNK_SIZE, len(text))
+        if end < len(text):
+            boundary = text.rfind(" ", start + CHUNK_SIZE // 2, end)
+            if boundary != -1:
+                end = boundary
+        yield text[start:end]
+        if end == len(text):
+            break
+        start = end - CHUNK_OVERLAP
+
+
+def load_pdfs_from_data_dir(directory: Path = DATA_DIR) -> Iterable[Fragment]:
+    pdf_files = sorted(directory.rglob("*.pdf"))
     if not pdf_files:
-        raise FileNotFoundError(f"В директории {DATA_DIR} не найдено PDF-файлов")
+        raise FileNotFoundError(f"В директории {directory} не найдено PDF-файлов")
 
-    documents = []
     for pdf_path in pdf_files:
-        print(f"Загружаю: {pdf_path.name}")
-        documents.extend(PyPDFLoader(str(pdf_path)).load())
-    return documents
+        source = pdf_path.relative_to(directory).as_posix()
+        for page_number, page in enumerate(PdfReader(pdf_path).pages, start=1):
+            text = " ".join(page.extract_text().split())
+            for chunk in split_text(text):
+                yield Fragment(source, page_number, chunk)
 
-def ingest(documents):
-    client = QdrantClient(url=QDRANT_URL)
-    collection = get_collection_name()
 
-    if client.collection_exists(collection): # удаление перед заполнением
-        client.delete_collection(collection)
-    client.create_collection(
-        collection_name=collection,
-        vectors_config=VectorParams(size=get_embedding_dim(), distance=Distance.COSINE),
-    )
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=get_chunk_size(),
-        chunk_overlap=get_chunk_overlap(),
-    )
-    chunks = splitter.split_documents(documents)
-
-    vectorstore = QdrantVectorStore(
-        client=client,
-        collection_name=collection,
-        embedding=get_embeddings(),
-    )
-    vectorstore.add_documents(chunks)
-    print(f"Записано чанков: {len(chunks)} в '{collection}'")
-    return len(chunks)
+def ingest(documents: Iterable[Fragment], index_path: Path = INDEX_PATH) -> int:
+    with TemporaryDirectory(dir=index_path.parent) as directory:
+        staged_index = Path(directory) / index_path.name
+        with closing(sqlite3.connect(staged_index)) as database, database:
+            database.execute(
+                "CREATE VIRTUAL TABLE fragments USING fts5(source UNINDEXED, page UNINDEXED, text, keywords)"
+            )
+            inserted = database.executemany(
+                "INSERT INTO fragments (source, page, text, keywords) VALUES (?, ?, ?, ?)",
+                ((fragment.source, fragment.page, fragment.text, fragment.keywords) for fragment in documents),
+            ).rowcount
+            if not inserted:
+                raise ValueError("Не найдено записей для индексации")
+        staged_index.replace(index_path)
+    print(f"Записано фрагментов: {inserted}")
+    return inserted
