@@ -71,6 +71,20 @@ class ValuesSpec:
 
 
 @dataclass(frozen=True)
+class CheckSpec:
+    rule: str
+    name: str
+    params: dict[str, Any]
+
+    @classmethod
+    def from_json(cls, payload: str | dict[str, Any]) -> "CheckSpec":
+        if isinstance(payload, str):
+            return cls(payload, payload, {})
+        params = {key: value for key, value in payload.items() if key not in ("rule", "name")}
+        return cls(payload["rule"], payload.get("name", payload["rule"]), params)
+
+
+@dataclass(frozen=True)
 class Conversion:
     source: str
     target: str
@@ -87,6 +101,8 @@ class Profile:
     table_fragment: str
     unit_aliases: dict[str, str]
     conversions: tuple[Conversion, ...]
+    ranges: dict[str, tuple[float, float]]
+    checks: tuple[CheckSpec, ...]
     rules: str
 
     @classmethod
@@ -103,6 +119,8 @@ class Profile:
             conversions=tuple(
                 Conversion(item["from"], item["to"], float(item["factor"])) for item in units.get("conversions", [])
             ),
+            ranges={metric: (float(low), float(high)) for metric, (low, high) in payload.get("ranges", {}).items()},
+            checks=tuple(CheckSpec.from_json(check) for check in payload.get("checks", [])),
             rules=rules,
         )
 
