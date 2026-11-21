@@ -14,12 +14,14 @@ data class ValuesSpec(
 
     val metric = column(Role.METRIC)
     val rawValue = column(Role.RAW_VALUE)
+    val rawUnit = column(Role.RAW_UNIT)
     val value = column(Role.VALUE)
     val unit = column(Role.UNIT)
     val aggregation = column(Role.AGGREGATION)
     val origin = column(Role.ORIGIN)
     val cited = column(Role.CITED)
     val page = column(Role.PAGE)
+    val section = column(Role.SECTION)
     val sourceTable = column(Role.TABLE)
     val figure = column(Role.FIGURE)
     val fragment = column(Role.FRAGMENT)
@@ -38,12 +40,14 @@ data class ValuesSpec(
 object Role {
     const val METRIC = "metric"
     const val RAW_VALUE = "raw_value"
+    const val RAW_UNIT = "raw_unit"
     const val VALUE = "value"
     const val UNIT = "unit"
     const val AGGREGATION = "aggregation"
     const val ORIGIN = "origin"
     const val CITED = "cited"
     const val PAGE = "page"
+    const val SECTION = "section"
     const val TABLE = "table"
     const val FIGURE = "figure"
     const val FRAGMENT = "fragment"
@@ -59,4 +63,6 @@ object Origin {
 
 object Status {
     const val EXTRACTED = "extracted"
+    const val PRESENT_NOT_EXTRACTABLE = "present_not_extractable"
+    const val ABSENT = "absent"
 }

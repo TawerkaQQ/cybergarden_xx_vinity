@@ -1,6 +1,10 @@
 package cybergarden.vinity.domain.port
 
+import cybergarden.vinity.domain.model.DocumentInfo
 import cybergarden.vinity.domain.model.Profile
+import cybergarden.vinity.domain.model.RenderedPage
+import cybergarden.vinity.domain.model.ReviewScope
+import cybergarden.vinity.domain.model.Reviews
 import cybergarden.vinity.domain.model.Submission
 import cybergarden.vinity.domain.model.Violation
 
@@ -28,5 +32,19 @@ fun interface TextNormalizer {
 }
 
 interface PageRenderer {
-    fun render(document: String, page: Int, highlight: String?): ByteArray?
+    fun render(document: String, page: Int, quotes: List<List<String>>): RenderedPage?
+}
+
+interface DocumentInspector {
+    fun inspect(document: String): DocumentInfo?
+
+    fun cached(document: String): DocumentInfo?
+
+    fun title(document: String): String?
+}
+
+interface ReviewRepository {
+    fun load(scope: ReviewScope): Reviews
+
+    fun update(scope: ReviewScope, change: (Reviews) -> Reviews): Reviews
 }

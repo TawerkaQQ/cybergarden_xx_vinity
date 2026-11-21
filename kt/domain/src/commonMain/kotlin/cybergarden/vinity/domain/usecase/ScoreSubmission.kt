@@ -4,9 +4,7 @@ import cybergarden.vinity.domain.model.MatchMode
 import cybergarden.vinity.domain.model.Publications
 import cybergarden.vinity.domain.model.Record
 import cybergarden.vinity.domain.model.Submission
-import cybergarden.vinity.domain.model.ValuesSpec
-import kotlin.math.abs
-import kotlin.math.max
+import cybergarden.vinity.domain.port.TextNormalizer
 
 data class Counts(val truePositive: Int = 0, val falsePositive: Int = 0, val falseNegative: Int = 0) {
     val precision: Double get() = ratio(truePositive, truePositive + falsePositive)
@@ -31,21 +29,27 @@ data class ScoreReport(
     val scope: ScopeAgreement,
 )
 
+data class ArticleComparison(
+    val extra: List<Record>,
+    val missed: List<Record>,
+    val matchedIssues: List<Record>,
+    val missedIssues: List<Record>,
+)
+
 class ScoreSubmission {
 
     operator fun invoke(candidate: Submission, gold: Submission, mode: MatchMode): ScoreReport {
         val spec = gold.profile.values
-        val scored = candidate.publications.map { it.publicationId }.toSet() intersect
-            gold.publications.map { it.publicationId }.toSet()
-        val candidateRows = candidate.values.filter { it.publicationId in scored && spec.isScored(it) }
-        val goldRows = gold.values.filter { it.publicationId in scored && spec.isScored(it) }
-        val matcher = Matcher(spec, spec.matchColumns(mode))
+        val scored = scoredPublications(candidate, gold)
+        val candidateRows = scoredRows(candidate, scored)
+        val goldRows = scoredRows(gold, scored)
+        val matcher = ValueMatcher(spec, mode)
 
         fun countsBy(group: (Record) -> String?): Map<String, Counts> {
             val candidateGroups = candidateRows.groupBy(group)
             val goldGroups = goldRows.groupBy(group)
             return (candidateGroups.keys + goldGroups.keys).filterNotNull().associateWith { key ->
-                matcher.count(candidateGroups[key].orEmpty(), goldGroups[key].orEmpty())
+                matcher.match(candidateGroups[key].orEmpty(), goldGroups[key].orEmpty()).counts
             }
         }
 
@@ -54,11 +58,11 @@ class ScoreSubmission {
             matchedBy = spec.match[mode].orEmpty(),
             publicationsScored = scored.size,
             publicationsInGold = gold.publications.size,
-            allMentions = matcher.count(candidateRows, goldRows),
-            primaryRecords = matcher.count(
+            allMentions = matcher.match(candidateRows, goldRows).counts,
+            primaryRecords = matcher.match(
                 candidateRows.filter { it[spec.duplicateOf] == null },
                 goldRows.filter { it[spec.duplicateOf] == null },
-            ),
+            ).counts,
             byMetric = countsBy { it[spec.metric] }.entries
                 .sortedWith(compareByDescending<Map.Entry<String, Counts>> { it.value.support }.thenBy { it.key })
                 .associate { it.key to it.value },
@@ -67,39 +71,32 @@ class ScoreSubmission {
         )
     }
 
-    private class Matcher(spec: ValuesSpec, columns: List<String>) {
-        private val valueColumn = spec.value
-        private val compareValue = valueColumn in columns
-        private val exactColumns = columns - valueColumn
+    fun article(candidate: Submission, gold: Submission, publicationId: String, mode: MatchMode, normalizer: TextNormalizer): ArticleComparison {
+        val only = setOf(publicationId)
+        val values = ValueMatcher(gold.profile.values, mode).match(scoredRows(candidate, only), scoredRows(gold, only))
+        val issues = IssueMatcher(normalizer).match(
+            candidate.issues.filter { it.publicationId == publicationId },
+            gold.issues.filter { it.publicationId == publicationId },
+        )
+        return ArticleComparison(
+            extra = values.unmatchedCandidates,
+            missed = values.unmatchedGold,
+            matchedIssues = issues.pairs.map { it.first },
+            missedIssues = issues.unmatchedGold,
+        )
+    }
 
-        fun count(candidate: List<Record>, gold: List<Record>): Counts {
-            val pool = gold.groupBy(::key).mapValues { it.value.toMutableList() }
-            val truePositive = candidate.count { row ->
-                val bucket = pool[key(row)] ?: return@count false
-                val hit = bucket.indexOfFirst { sameValue(it, row) }
-                if (hit >= 0) bucket.removeAt(hit)
-                hit >= 0
-            }
-            return Counts(truePositive, candidate.size - truePositive, gold.size - truePositive)
-        }
+    private fun scoredPublications(candidate: Submission, gold: Submission): Set<String> =
+        candidate.publications.map { it.publicationId }.toSet() intersect gold.publications.map { it.publicationId }.toSet()
 
-        private fun key(row: Record): List<String?> = listOf(row.publicationId) + exactColumns.map { row[it] }
-
-        private fun sameValue(gold: Record, candidate: Record): Boolean {
-            if (!compareValue) return true
-            val expected = gold.number(valueColumn) ?: return false
-            val actual = candidate.number(valueColumn) ?: return false
-            return abs(expected - actual) <= VALUE_TOLERANCE * max(1.0, abs(expected))
-        }
+    private fun scoredRows(submission: Submission, publications: Set<String>): List<Record> {
+        val spec = submission.profile.values
+        return submission.values.filter { it.publicationId in publications && spec.isScored(it) }
     }
 
     private fun scopeAgreement(candidate: Submission, gold: Submission, ids: Set<String>): ScopeAgreement {
         val expected = gold.publications.associate { it.publicationId to it[Publications.IN_SCOPE] }
         val agreed = candidate.publications.count { it.publicationId in ids && it[Publications.IN_SCOPE] == expected[it.publicationId] }
         return ScopeAgreement(agreed, ids.size)
-    }
-
-    private companion object {
-        const val VALUE_TOLERANCE = 1e-6
     }
 }

@@ -109,5 +109,38 @@
     ]
   },
   "ranges": {},
-  "checks": ["contradiction", "champion_vs_mean", "duplicate_consistency"]
+  "checks": ["contradiction", "champion_vs_mean", "duplicate_consistency"],
+  "display": {
+    "record": {
+      "column": "entity_id",
+      "title": "Объект",
+      "group": "По объектам"
+    },
+    "records_tab": "Объекты и условия",
+    "checks": {
+      "contradiction": {
+        "title": "Одно значение записано по-разному",
+        "rule": "Одна и та же величина одной записи упомянута в нескольких местах статьи, и числа различаются сильнее округления."
+      },
+      "champion_vs_mean": {
+        "title": "Среднее больше лучшего",
+        "rule": "Среднее по образцам не может быть выше результата лучшего образца той же записи."
+      },
+      "duplicate_consistency": {
+        "title": "Повтор не совпадает с основным",
+        "rule": "Повтор должен совпадать с основной записью по ключевым полям."
+      }
+    },
+    "aggregations": {
+      "champion": "лучший образец",
+      "mean": "среднее по образцам",
+      "median": "медиана"
+    },
+    "overview": [
+      {
+        "kind": "counts",
+        "title": "Значений по показателям"
+      }
+    ]
+  }
 }

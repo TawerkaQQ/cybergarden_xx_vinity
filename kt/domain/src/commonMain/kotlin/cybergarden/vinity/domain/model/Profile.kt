@@ -3,10 +3,15 @@ package cybergarden.vinity.domain.model
 data class Profile(
     val name: String,
     val title: String,
+    val scope: String,
     val tables: List<TableSpec>,
     val values: ValuesSpec,
     val issues: TableSpec,
     val sources: SourcesSpec,
+    val units: UnitsSpec,
+    val ranges: Map<String, ClosedFloatingPointRange<Double>>,
+    val checks: List<String>,
+    val display: DisplaySpec,
 ) {
     val allTables: List<TableSpec> = tables + issues
     val publications: TableSpec = table(Publications.TABLE)
@@ -25,6 +30,11 @@ data class Profile(
             values.match.values.flatten().map(values::column))
             .filterNot { it in valueColumns }
             .forEach { fail("в таблице значений ${values.table} нет колонки $it") }
+        display.references().filterNot { it in valueTable.references }
+            .forEach { fail("display: $it не ссылка таблицы ${values.table}") }
+        display.overview.filterIsInstance<ChartSpec.Scatter>()
+            .filterNot { chart -> valueTable.references[chart.x.column]?.let { table(it).columns.contains(chart.x.field) } == true }
+            .forEach { fail("display: нет колонки ${it.x.field} у таблицы по ссылке ${it.x.column}") }
     }
 
     fun table(name: String): TableSpec = allTables.firstOrNull { it.name == name } ?: fail("нет таблицы $name")
@@ -45,9 +55,24 @@ data class TableSpec(
 data class SourcesSpec(
     val tableFragment: TableFragment,
     val textVariants: List<String>,
-)
+) {
+    fun quoteCandidates(fragment: String): List<String> = listOfNotNull(
+        fragment,
+        rowLabel(fragment),
+    )
+
+    fun rowLabel(fragment: String): String? =
+        TableReference.parse(fragment)?.label?.takeIf { tableFragment == TableFragment.ROW_LABEL && it.isNotEmpty() }
+}
 
 enum class TableFragment { ROW_LABEL, LITERAL }
+
+data class UnitsSpec(
+    val aliases: Map<String, String>,
+    val conversions: List<UnitConversion>,
+)
+
+data class UnitConversion(val from: String, val to: String, val factor: Double)
 
 object Publications {
     const val TABLE = "publications"

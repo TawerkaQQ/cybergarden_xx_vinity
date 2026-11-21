@@ -6,18 +6,22 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.readText
 
 class JsonPageTextSource(private val directory: Path) : PageTextSource {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val cache = mutableMapOf<String, List<PageText>?>()
+    private val cache = ConcurrentHashMap<Pair<Path, Long>, List<PageText>>()
 
-    override fun pages(publicationId: String): List<PageText>? = cache.getOrPut(publicationId) {
+    override fun pages(publicationId: String): List<PageText>? {
         val path = directory.resolve("$publicationId.json")
-        if (!path.exists()) return@getOrPut null
-        json.decodeFromString<PagesDocument>(path.readText(Charsets.UTF_8)).pages.map { PageText(it.page, it.texts) }
+        if (!path.exists()) return null
+        return cache.computeIfAbsent(path to path.getLastModifiedTime().toMillis()) {
+            json.decodeFromString<PagesDocument>(path.readText(Charsets.UTF_8)).pages.map { PageText(it.page, it.texts) }
+        }
     }
 
     @Serializable

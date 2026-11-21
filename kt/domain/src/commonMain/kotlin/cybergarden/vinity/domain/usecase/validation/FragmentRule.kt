@@ -4,6 +4,7 @@ import cybergarden.vinity.domain.model.Issues
 import cybergarden.vinity.domain.model.Record
 import cybergarden.vinity.domain.model.Submission
 import cybergarden.vinity.domain.model.TableFragment
+import cybergarden.vinity.domain.model.TableReference
 import cybergarden.vinity.domain.model.Violation
 import cybergarden.vinity.domain.port.PageTextSource
 import cybergarden.vinity.domain.port.TextNormalizer
@@ -31,7 +32,7 @@ class FragmentRule(
             val variants = text.associate { page ->
                 page.page to page.variants.filterKeys { it in profile.sources.textVariants }.values.map(normalizer::normalize)
             }
-            own.filterNot { rowLabels && TABLE_REFERENCE.containsMatchIn(it.fragment) }.mapNotNull { quote ->
+            own.filterNot { rowLabels && TableReference.parse(it.fragment) != null }.mapNotNull { quote ->
                 locate(quote, variants)
             }
         }
@@ -48,9 +49,5 @@ class FragmentRule(
         val hint = if (elsewhere.isEmpty()) "" else ", есть на стр. ${elsewhere.joinToString()}"
         val empty = if (texts.all { it.isEmpty() }) ", у страницы нет текста" else ""
         return Violation.error(quote.table, quote.row, "цитата не найдена на стр. $number$hint$empty: «${quote.fragment.take(80)}»")
-    }
-
-    private companion object {
-        val TABLE_REFERENCE = Regex("^(Table|Таблица)\\s+\\S+\\s*,\\s*(строка|столбец)", RegexOption.IGNORE_CASE)
     }
 }

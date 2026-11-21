@@ -55,3 +55,7 @@ compose.desktop {
         mainClass = "cybergarden.vinity.app.MainKt"
     }
 }
+
+tasks.withType<JavaExec>().configureEach {
+    providers.gradleProperty("vinity.api").orNull?.let { systemProperty("vinity.api", it) }
+}
