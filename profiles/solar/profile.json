@@ -14,7 +14,7 @@
       "vocabularies": {"in_scope": ["true", "false"]},
       "units": {},
       "descriptions": {
-        "authors": "авторы через ;",
+        "authors": "все авторы в порядке статьи в виде «Фамилия И.О.» через «; »: Qiao H.W.; Chen M.; Zhou Z.",
         "exclusion_reason": "почему статья вне области, только при in_scope=false"
       }
     },
@@ -34,7 +34,7 @@
       "units": {"bandgap_value": {"unit_column": "bandgap_unit", "target": "eV"}},
       "descriptions": {
         "material_name_raw": "поглотитель как назван в статье",
-        "formula_normalized": "для перовскита вид A-B-X; пусто, если состав дан только навесками",
+        "formula_normalized": "химическая формула поглотителя одной строкой, без дефисов и без добавок: CsPbI2Br, Cs0.15FA0.85PbI2.85Br0.15, Cu(In,Ga)Se2, Sb2Se3; пусто, если состав дан только навесками",
         "dimensionality": "только для перовскитов",
         "bandgap_value": "ширина зоны поглотителя, не ETL и не HTM"
       }
@@ -73,9 +73,10 @@
       },
       "units": {"layer_thickness": {"unit_column": "thickness_unit", "target": "nm"}},
       "descriptions": {
+        "device_id": "прибор, к стеку которого относится слой; у каждого прибора свой полный стек, общие слои повторяются у каждого прибора",
         "layer_order": "номер слоя от подложки, с 1; подложку не записываем",
         "layer_function": "CdS и подобные буферы — ETL; i-ZnO, ZnO:Al, металлическая сетка — front_contact; просветляющее покрытие и барьеры — interlayer",
-        "annealing_temperature": "в °C",
+        "annealing_temperature": "с единицей °C: 100 °C",
         "annealing_time": "с единицей из статьи, например 10 min"
       }
     },
@@ -95,7 +96,8 @@
       },
       "units": {},
       "descriptions": {
-        "scan_direction": "прямой и обратный ход — разные измерения",
+        "device_id": "все приборы, измеренные в этих условиях; одно измерение на условия, а не на прибор",
+        "scan_direction": "только если статья даёт значения отдельно для прямого и обратного хода — тогда это разные измерения; иначе пусто",
         "spectrum": "как в статье: AM1.5G, 1 sun, halogen lamp (non-standard)",
         "light_intensity": "как в статье, без пересчёта: 100 и mW/cm2 или 1000 и W/m2",
         "stability_protocol": "ISOS не назван — other, условия в stress_conditions"
@@ -167,6 +169,7 @@
       {"from": "mV", "to": "V", "factor": 0.001},
       {"from": "fraction", "to": "%", "factor": 100},
       {"from": "A/m2", "to": "mA/cm2", "factor": 0.1},
+      {"from": "W/m2", "to": "mW/cm2", "factor": 0.1},
       {"from": "kOhm*cm2", "to": "Ohm*cm2", "factor": 1000},
       {"from": "um", "to": "nm", "factor": 1000},
       {"from": "angstrom", "to": "nm", "factor": 0.1},
@@ -179,7 +182,16 @@
     "PCE": [0, 35], "stabilized_PCE": [0, 35], "Voc": [0.05, 1.6], "Jsc": [0.1, 50], "Jsc_EQE": [0.1, 50],
     "FF": [20, 90], "HI": [-50, 100], "Rs": [0, 1000], "Rsh": [1, 10000000], "retained_PCE": [0, 120], "T80": [0, 100000]
   },
-  "checks": ["jv_consistency", "voc_limit", "range", "eqe_consistency", "champion_vs_mean", "hysteresis_index", "contradiction"],
+  "checks": [
+    {"rule": "range", "unless": {"table": "devices", "via": "device_id", "column": "device_type", "values": ["minimodule", "module"]}},
+    "contradiction",
+    {"rule": "product", "name": "jv_consistency", "target": "PCE", "factors": ["Voc", "Jsc", "FF"], "tolerance": 0.03,
+     "divisor": {"table": "measurements", "via": "measurement_id", "value": "light_intensity", "unit": "intensity_unit", "target_unit": "mW/cm2", "default": 100}},
+    {"rule": "agreement", "name": "eqe_consistency", "metrics": ["Jsc", "Jsc_EQE"], "by": ["device_id"], "tolerance": 0.05},
+    {"rule": "order", "name": "champion_vs_mean", "metrics": ["PCE", "stabilized_PCE"], "lower": "mean", "upper": "champion"},
+    "voc_limit",
+    "hysteresis_index"
+  ],
   "display": {
     "record": {
       "column": "device_id",
