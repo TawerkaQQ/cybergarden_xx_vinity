@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -188,9 +187,9 @@ private fun columns(store: AppStore) = listOf(
     TableColumn(ValueSortDto.ARTICLE, "Статья", 1.5f),
     TableColumn(ValueSortDto.METRIC, "Показатель", 1.4f),
     TableColumn(ValueSortDto.VALUE, "Значение", 1.1f, end = true),
-    TableColumn(null, "В статье", 1.1f),
+    TableColumn(ValueSortDto.RAW, "В статье", 1.1f),
     TableColumn(ValueSortDto.RECORD, store.profile?.recordTitle ?: "Запись", 1.4f),
-    TableColumn(null, "Агрегация", 1f),
+    TableColumn(ValueSortDto.AGGREGATION, "Агрегация", 1f),
     TableColumn(ValueSortDto.PLACE, "Где", 1.1f),
     TableColumn(ValueSortDto.STATUS, "Статус", 1.3f),
 )
@@ -235,12 +234,12 @@ private fun TableRow(store: AppStore, value: ValueDto, title: String?) {
             .hoverable(source)
             .clickable(source, indication = null) { store.openValue(value.publicationId, value.id) }
             .hand(),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Cell(widths[0]) { ArticleLabel(value.publicationId, title) }
         Cell(widths[1]) {
             Text(profile.metricTitle(value.metric), style = T.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            value.metric?.takeIf { it != profile.metricTitle(it) }?.let { Text(it, style = T.small, color = C.fg2) }
+            value.metric?.takeIf { it != profile.metricTitle(it) }?.let { Text(it, Modifier.subline(), style = T.small, color = C.fg2) }
         }
         Cell(widths[2], end = true) {
             AmountText(value)
@@ -248,12 +247,12 @@ private fun TableRow(store: AppStore, value: ValueDto, title: String?) {
         Cell(widths[3]) { Text(value.rawValue?.let { "«${withUnit(it, value.rawUnit)}»" } ?: "—", style = T.body, color = C.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         Cell(widths[4]) {
             Text(value.recordLabel ?: "—", style = T.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            value.links.filter { it.concise && it.id != value.record }.firstOrNull()?.let { Text(it.label, style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            value.links.filter { it.concise && it.id != value.record }.firstOrNull()?.let { Text(it.label, Modifier.subline(), style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         Cell(widths[5]) { Text(profile.aggregationTitle(value.aggregation) ?: "—", style = T.body, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         Cell(widths[6]) {
             Text(value.page?.let { "стр. $it" } ?: "—", style = T.body)
-            Text(value.place(), style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value.place(), Modifier.subline(), style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Cell(widths[7]) { StatusBadges(store, value) }
     }
@@ -279,6 +278,7 @@ private fun StatusBadges(store: AppStore, value: ValueDto) {
         value.review?.let { Badge(it.state.title(), it.state.tone()) }
         if (issues > 0) Badge(plural(issues, Issues), Tone.ERR)
         if (value.duplicateOf != null) Badge("Повтор")
+        value.repeats.firstOrNull()?.let { Badge("Есть в ${it.publicationId}", Tone.INFO, hint = RepeatHint) }
         if (!value.quote.status.found()) Badge("Без цитаты", Tone.WARN)
     }
 }
@@ -300,7 +300,7 @@ private fun ValueCard(store: AppStore, value: ValueDto, title: String?, first: B
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(profile.metricTitle(value.metric), style = T.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(listOfNotNull(value.publicationId, value.recordLabel, value.pageAndPlace()).joinToString(" · "), style = T.small, color = C.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(listOfNotNull(value.publicationId, value.recordLabel, value.pageAndPlace()).joinToString(" · "), Modifier.subline(), style = T.small, color = C.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 title?.let { Text(it, style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Column(horizontalAlignment = Alignment.End) { AmountText(value) }

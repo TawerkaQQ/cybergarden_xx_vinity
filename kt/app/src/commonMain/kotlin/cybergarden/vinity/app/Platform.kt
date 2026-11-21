@@ -1,5 +1,6 @@
 package cybergarden.vinity.app
 
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 
 expect class LocalFile {
@@ -28,3 +29,9 @@ expect fun writeLocationHash(hash: String)
 expect fun listenForLocationHash(onChange: (String) -> Unit)
 
 expect fun shareableLink(hash: String): String
+
+expect fun loadSetting(key: String): String?
+
+expect fun saveSetting(key: String, value: String?)
+
+expect fun Modifier.resizeCursor(): Modifier

@@ -1,6 +1,5 @@
 package cybergarden.vinity.app.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +25,7 @@ import cybergarden.vinity.api.SourceDto
 import cybergarden.vinity.api.ValueKindDto
 import cybergarden.vinity.app.AppStore
 import cybergarden.vinity.app.QualityTab
+import cybergarden.vinity.app.TableSort
 import kotlin.math.roundToInt
 
 private val Ink = Color(0xFF1F1F1F)
@@ -35,6 +33,8 @@ private val Times = Word("раз", "раза", "раз")
 private const val CHART_METRICS = 15
 private const val TABLE_METRICS = 30
 private const val UNIT_METRICS = 40
+private const val METRIC_TABLE = "metrics"
+private const val CHECK_TABLE = "checks"
 
 private class TileSpec(val title: String, val value: String, val note: String, val badge: Pair<String, Tone>? = null)
 
@@ -56,6 +56,7 @@ private fun QualityTab.title(): String = when (this) {
     QualityTab.QUOTES -> "Связь с местом в статье"
     QualityTab.NORMALIZATION -> "Нормализация"
     QualityTab.CHECKS -> "Проверка достоверности"
+    QualityTab.PASSPORT -> "Паспорт данных"
 }
 
 @Composable
@@ -72,9 +73,13 @@ fun QualityScreen(store: AppStore) {
     ScreenList("quality-${set?.ref?.path}-${set?.source}-$tab") {
         centered("head") { PageHeader("Качество", subtitle) }
         centered("tabs") {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 Segmented(QualityTab.entries.map { it to it.title() }, tab, store::selectQualityTab)
             }
+        }
+        if (tab == QualityTab.PASSPORT) {
+            passportTab(store, store.passport)
+            return@ScreenList
         }
         if (loading && quality == null) {
             centered("loading") { ScreenLoading() }
@@ -85,6 +90,7 @@ fun QualityScreen(store: AppStore) {
             QualityTab.QUOTES -> if (quality == null) unavailable() else quotesTab(store, quality.quotes)
             QualityTab.NORMALIZATION -> if (quality == null) unavailable() else normalizationTab(store, quality.normalization, profile)
             QualityTab.CHECKS -> if (quality == null) unavailable() else checksTab(store, quality.checks, profile, set?.source)
+            QualityTab.PASSPORT -> Unit
         }
     }
 }
@@ -137,7 +143,7 @@ private fun LazyListScope.extractTab(store: AppStore, score: ScoreDto?, profile:
                         Segment("Пропущено: есть у экспертов, а мы не нашли", counts.falseNegative, C.c3, Color.White),
                     ),
                 )
-                Muted("Область статьи определена верно в ${score.scopeAgreed} из ${score.scopeTotal} статей.", Modifier.padding(top = 8.dp), small = true)
+                if (score.scopeTotal > 0) Muted("Область статьи определена верно в ${score.scopeAgreed} из ${score.scopeTotal} статей.", Modifier.padding(top = 8.dp), small = true)
             }
         }
     }
@@ -174,19 +180,21 @@ private fun LazyListScope.extractTab(store: AppStore, score: ScoreDto?, profile:
     centered("table-head") {
         SectionHeader("Таблица по показателям", if (metrics.size > shown.size) "Показаны ${shown.size} самых частых из ${metrics.size}" else null)
     }
-    centered("table-columns") { BlockPiece(first = true, last = false) { TableHeader(headers) } }
-    shown.forEachIndexed { index, metric ->
+    val lines = shown.map { metric ->
+        with(metric.counts) {
+            TableLine(
+                title = metric.title,
+                code = metric.code.takeIf { it != metric.title },
+                numbers = listOf(truePositive.toString(), falsePositive.toString(), falseNegative.toString(), fixed2(precision), fixed2(recall), fixed2(f1)),
+                keys = listOf(truePositive.toDouble(), falsePositive.toDouble(), falseNegative.toDouble(), precision, recall, f1),
+            )
+        }
+    }.sortedBy(store.tableSorts[METRIC_TABLE])
+    centered("table-columns") { BlockPiece(first = true, last = false) { TableHeader(headers, store.tableSorts[METRIC_TABLE]) { store.sortTable(METRIC_TABLE, it) } } }
+    lines.forEachIndexed { index, line ->
         centered("table-row-$index") {
-            BlockPiece(first = false, last = index == shown.lastIndex) {
-                TableRow(
-                    headers = headers,
-                    title = metric.title,
-                    code = metric.code.takeIf { it != metric.title },
-                    numbers = with(metric.counts) {
-                        listOf(truePositive.toString(), falsePositive.toString(), falseNegative.toString(), fixed2(precision), fixed2(recall), fixed2(f1))
-                    },
-                    emphasizeLast = true,
-                )
+            BlockPiece(first = false, last = index == lines.lastIndex) {
+                TableRow(headers = headers, title = line.title, code = line.code, numbers = line.numbers, emphasizeLast = true)
             }
         }
     }
@@ -285,7 +293,7 @@ private fun LazyListScope.normalizationTab(store: AppStore, normalization: Norma
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("${unitText(conversion.from).ifEmpty { "без единицы" }} → ${unitText(conversion.to).ifEmpty { "без единицы" }}", style = T.body)
-                    Muted("например ${conversion.publicationId}: «${conversion.exampleRaw}» → ${withUnit(conversion.example.value ?: "—", conversion.example.unit)}", small = true)
+                    Muted("например ${conversion.publicationId}: «${conversion.exampleRaw}» → ${withUnit(conversion.example.value ?: "—", conversion.example.unit)}", Modifier.subline(), small = true)
                 }
                 Text(plural(conversion.count, Values), style = T.body, textAlign = TextAlign.End)
                 GlyphIcon(Glyph.RIGHT, C.fg3)
@@ -306,7 +314,7 @@ private fun LazyListScope.normalizationTab(store: AppStore, normalization: Norma
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(title, style = T.body)
-                    if (title != metric.metric) Muted(metric.metric, small = true)
+                    if (title != metric.metric) Muted(metric.metric, Modifier.subline(), small = true)
                 }
                 Text(unitText(metric.unit).ifEmpty { "без единицы" }, style = T.body)
                 if (metric.inUnit == metric.values) Badge("все значения", Tone.OK) else Badge("${metric.inUnit} из ${metric.values}", Tone.WARN)
@@ -355,22 +363,15 @@ private fun LazyListScope.checksTab(store: AppStore, checks: ChecksQualityDto, p
     }
     val headers = if (gold != null) listOf("Правило", "Нашли", "У экспертов", "Совпало") else listOf("Правило", "Нашли")
     centered("c-table-head") { SectionHeader("По правилам") }
-    centered("c-table-columns") { BlockPiece(first = true, last = false) { TableHeader(headers) } }
-    checks.byCheck.forEachIndexed { index, check ->
+    val lines = checks.byCheck.map { check ->
+        val counts = if (gold != null) listOf(check.found, check.gold ?: 0, check.matched ?: 0) else listOf(check.found)
+        TableLine(profile.checkTitle(check.check), check.check, counts.map { it.toString() }, counts.map { it.toDouble() })
+    }.sortedBy(store.tableSorts[CHECK_TABLE])
+    centered("c-table-columns") { BlockPiece(first = true, last = false) { TableHeader(headers, store.tableSorts[CHECK_TABLE]) { store.sortTable(CHECK_TABLE, it) } } }
+    lines.forEachIndexed { index, line ->
         centered("c-check-$index") {
-            BlockPiece(first = false, last = index == checks.byCheck.lastIndex) {
-                TableRow(
-                    headers = headers,
-                    title = profile.checkTitle(check.check),
-                    code = check.check,
-                    numbers = if (gold != null) {
-                        listOf(check.found.toString(), (check.gold ?: 0).toString(), (check.matched ?: 0).toString())
-                    } else {
-                        listOf(check.found.toString())
-                    },
-                    emphasizeLast = false,
-                    monoCode = true,
-                )
+            BlockPiece(first = false, last = index == lines.lastIndex) {
+                TableRow(headers = headers, title = line.title, code = line.code, numbers = line.numbers, emphasizeLast = false, monoCode = true)
             }
         }
     }
@@ -416,16 +417,34 @@ private fun TileRow(tiles: List<TileSpec>) {
 }
 
 @Composable
-private fun TableHeader(headers: List<String>) {
+private fun TableHeader(headers: List<String>, sort: TableSort?, onSort: (Int) -> Unit) {
     val phone = LocalWidth.current == Width.PHONE
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (phone) {
             Text(headers.joinToString(" · "), style = T.small, color = C.fg2)
         } else {
-            Text(headers.first(), Modifier.weight(2f), style = T.small, color = C.fg2)
-            headers.drop(1).forEach { Text(it, Modifier.weight(1f), style = T.small, color = C.fg2, textAlign = TextAlign.End) }
+            headers.forEachIndexed { index, header ->
+                val active = sort?.column == index
+                val arrow = if (active) (if (sort?.descending == true) " ↓" else " ↑") else ""
+                Text(
+                    header + arrow,
+                    Modifier.weight(if (index == 0) 2f else 1f).press { onSort(index) },
+                    style = T.small,
+                    color = if (active) C.fg else C.fg2,
+                    textAlign = if (index == 0) TextAlign.Start else TextAlign.End,
+                    maxLines = 1,
+                )
+            }
         }
     }
+}
+
+private class TableLine(val title: String, val code: String?, val numbers: List<String>, val keys: List<Double>)
+
+private fun List<TableLine>.sortedBy(sort: TableSort?): List<TableLine> {
+    if (sort == null) return this
+    val comparator: Comparator<TableLine> = if (sort.column == 0) compareBy { it.title.lowercase() } else compareBy { it.keys[sort.column - 1] }
+    return sortedWith(if (sort.descending) comparator.reversed() else comparator)
 }
 
 @Composable
@@ -435,15 +454,15 @@ private fun TableRow(headers: List<String>, title: String, code: String?, number
     if (phone) {
         Column(modifier) {
             Text(title, style = T.body)
-            code?.let { Text(it, style = if (monoCode) T.mono.copy(color = C.fg2) else T.small.copy(color = C.fg2)) }
+            code?.let { Text(it, Modifier.subline(), style = if (monoCode) T.mono.copy(color = C.fg2) else T.small.copy(color = C.fg2)) }
             Text(headers.drop(1).zip(numbers).joinToString(" · ") { (header, value) -> "${header.lowercase()} $value" }, style = T.small, color = C.fg2)
         }
         return
     }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(2f)) {
             Text(title, style = T.body)
-            code?.let { Text(it, style = if (monoCode) T.mono.copy(color = C.fg2) else T.small.copy(color = C.fg2)) }
+            code?.let { Text(it, Modifier.subline(), style = if (monoCode) T.mono.copy(color = C.fg2) else T.small.copy(color = C.fg2)) }
         }
         numbers.forEachIndexed { index, value ->
             Text(

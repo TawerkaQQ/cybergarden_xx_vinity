@@ -2,6 +2,8 @@ package cybergarden.vinity.app.ui
 
 import cybergarden.vinity.api.ArticleSummaryDto
 import cybergarden.vinity.api.IssueReviewStateDto
+import cybergarden.vinity.api.ProcessingDto
+import cybergarden.vinity.api.ProcessingStateDto
 import cybergarden.vinity.api.ProfileDto
 import cybergarden.vinity.api.QuoteStatusDto
 import cybergarden.vinity.api.SetRef
@@ -38,11 +40,20 @@ fun unitText(unit: String?): String {
     return unit.replace("Ohm", "Ω").replace("*", "·").replace(Regex("(?<=[a-zA-Z])([23])$")) { superscripts[it.value[0]].orEmpty() }
 }
 
-fun withUnit(number: String, unit: String?): String = when (val text = unitText(unit)) {
-    "" -> number
-    "доля" -> "$number (доля)"
-    "%" -> "$number %"
-    else -> "$number $text"
+fun withUnit(number: String, unit: String?): String {
+    val text = unitText(unit)
+    return when {
+        text.isEmpty() || endsWithUnit(number, unit) || endsWithUnit(number, text) -> number
+        text == "доля" -> "$number (доля)"
+        else -> "$number $text"
+    }
+}
+
+private fun endsWithUnit(number: String, unit: String?): Boolean {
+    val trimmed = number.trimEnd()
+    if (unit.isNullOrBlank() || !trimmed.endsWith(unit)) return false
+    val before = trimmed.dropLast(unit.length).lastOrNull() ?: return false
+    return before.isDigit() || before.isWhitespace()
 }
 
 fun ValueDto.amount(): String = withUnit(value ?: rawValue ?: "—", if (value != null) unit else rawUnit)
@@ -119,6 +130,30 @@ fun SourceDto.title(): String = when (this) {
     SourceDto.RESULTS -> "результат системы"
     SourceDto.GOLD -> "эталон экспертов"
 }
+
+const val BeyondGoldHint = "У экспертов этого значения нет, но цитата дословно найдена на странице: возможно, эксперты его пропустили"
+
+const val RepeatHint = "То же значение метрики с той же единицей есть в другой статье набора: похоже, один результат описан разными авторами"
+
+fun durationText(seconds: Int): String = if (seconds < 60) "$seconds с" else "${seconds / 60} мин"
+
+fun ProcessingDto?.shown(): Boolean = this != null && (active || state == ProcessingStateDto.FAILED)
+
+fun ProcessingDto.title(): String = when (state) {
+    ProcessingStateDto.QUEUED -> "В очереди"
+    ProcessingStateDto.RUNNING -> "Обрабатывается" + (seconds?.let { " · ${durationText(it)}" } ?: "")
+    ProcessingStateDto.DONE -> "Обработана"
+    ProcessingStateDto.FAILED -> "Ошибка обработки"
+}
+
+fun ProcessingDto.tone(): Tone = when (state) {
+    ProcessingStateDto.QUEUED -> Tone.INFO
+    ProcessingStateDto.RUNNING -> Tone.PRI
+    ProcessingStateDto.DONE -> Tone.OK
+    ProcessingStateDto.FAILED -> Tone.ERR
+}
+
+fun ProcessingDto.hint(): String? = if (state == ProcessingStateDto.FAILED) problem else step
 
 fun setTitle(ref: SetRef, uploads: Boolean): String = if (uploads) "загруженные" else ref.set
 

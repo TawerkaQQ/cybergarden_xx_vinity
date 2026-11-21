@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +52,7 @@ import cybergarden.vinity.app.AppStore
 import cybergarden.vinity.app.Evidence
 import cybergarden.vinity.app.Mark
 import cybergarden.vinity.app.ViewerTarget
+import cybergarden.vinity.app.resizeCursor
 
 private val DismissReasons = listOf("Разные условия измерения", "Округление в статье", "Число сверено со сканом", "Другая причина")
 
@@ -69,7 +69,7 @@ fun EvidencePanel(store: AppStore, modifier: Modifier, docked: Boolean) {
             val source = remember { MutableInteractionSource() }
             val hover = hovered(source)
             Box(
-                Modifier.width(6.dp).fillMaxHeight().hoverable(source).background(if (hover) C.primary.copy(alpha = 0.4f) else C.surface)
+                Modifier.width(6.dp).fillMaxHeight().hoverable(source).resizeCursor().background(if (hover) C.primary.copy(alpha = 0.4f) else C.surface)
                     .draggable(
                         rememberDraggableState { delta -> width = (width - with(density) { delta.toDp() }).coerceIn(380.dp, 960.dp) },
                         Orientation.Horizontal,
@@ -120,13 +120,17 @@ private fun Modifier.drawBottomLine(color: Color): Modifier = drawBehind {
 @Composable
 private fun ColumnScope.PanelBody(key: Any, content: @Composable ColumnScope.() -> Unit) {
     val scroll = remember(key) { ScrollState(0) }
-    Column(
-        Modifier.weight(1f).fillMaxWidth().background(C.bg).verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        content = content,
-    )
+    Box(Modifier.weight(1f).fillMaxWidth().background(C.bg)) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+        ColumnScrollbar(scroll)
+    }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.ValuePanel(store: AppStore, article: ArticleDto, value: ValueDto) {
     val profile = store.profile
@@ -148,6 +152,22 @@ private fun ColumnScope.ValuePanel(store: AppStore, article: ArticleDto, value: 
                 LinkButton("Разобрать замечание", { store.openIssue(issue.publicationId, issue.id) })
             }
         }
+        if (value.repeats.isNotEmpty()) {
+            Alert(Tone.INFO, Glyph.INFO) {
+                Text("Это же значение есть в другой статье", style = T.alert)
+                Text(RepeatHint, style = T.body)
+                FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    value.repeats.forEach { repeat ->
+                        Chip(
+                            listOfNotNull(repeat.publicationId, repeat.page?.let { "стр. $it" }).joinToString(" · "),
+                            pressed = false,
+                            onClick = { store.openValue(repeat.publicationId, repeat.valueId) },
+                            hint = repeat.fragment,
+                        )
+                    }
+                }
+            }
+        }
         Block {
             FieldRow("Значение", first = true) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -161,7 +181,7 @@ private fun ColumnScope.ValuePanel(store: AppStore, article: ArticleDto, value: 
             }
             FieldRow("В статье", first = false) {
                 Text(value.rawValue?.let { "«${withUnit(it, value.rawUnit)}»" } ?: "—", style = T.body, textAlign = TextAlign.End)
-                value.status?.takeIf { it != "extracted" }?.let { Text(statusText(it), style = T.small, color = C.fg2, textAlign = TextAlign.End) }
+                value.status?.takeIf { it != "extracted" }?.let { Text(statusText(it), Modifier.subline(), style = T.small, color = C.fg2, textAlign = TextAlign.End) }
             }
             FieldRow("Нормализация", value.written()?.let { "«$it» → ${value.amount()}" } ?: "без изменений", first = false)
             value.note?.let { FieldRow("Примечание", it, first = false) }
@@ -262,7 +282,14 @@ private fun Details(store: AppStore, article: ArticleDto, value: ValueDto) {
         }
         if (comparison != null) {
             FieldRow("Эталон экспертов", first = false) {
-                if (value.id in comparison.extra) Badge("у экспертов этого значения нет", Tone.WARN) else Badge("есть у экспертов")
+                when {
+                    value.id !in comparison.extra -> Badge("есть у экспертов")
+                    value.quote.status.found() -> {
+                        Badge("сверх эталона", Tone.INFO)
+                        Text(BeyondGoldHint, style = T.small, color = C.fg2, textAlign = TextAlign.End)
+                    }
+                    else -> Badge("у экспертов этого значения нет", Tone.WARN)
+                }
             }
         }
     }
@@ -355,7 +382,7 @@ private fun ColumnScope.IssuePanel(store: AppStore, article: ArticleDto, issue: 
                 }
             }
             Text(issue.description ?: "Описание не указано", style = T.body)
-            issue.review?.reason?.let { Text("Причина: $it", style = T.small, color = C.fg2) }
+            issue.review?.reason?.let { Text("Причина: $it", Modifier.subline(), style = T.small, color = C.fg2) }
         }
         profile.checkRule(issue.check)?.let { Explain(it, bold = "Правило.") }
         pages.forEach { page ->

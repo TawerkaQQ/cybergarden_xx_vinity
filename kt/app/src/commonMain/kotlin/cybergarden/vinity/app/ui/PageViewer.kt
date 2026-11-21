@@ -4,8 +4,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,13 +24,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,15 +41,24 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import cybergarden.vinity.api.HighlightBox
 import cybergarden.vinity.app.AppStore
 import cybergarden.vinity.app.Mark
+import cybergarden.vinity.app.MarkItem
+import cybergarden.vinity.app.MarkKind
 import cybergarden.vinity.app.PageImage
 import cybergarden.vinity.app.ViewerTarget
 
@@ -69,10 +81,11 @@ fun Viewer(store: AppStore, target: ViewerTarget, modifier: Modifier = Modifier)
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            PageNav(store, target, page)
+            val center = Modifier.align(Alignment.CenterVertically)
+            Box(center) { PageNav(store, target, page) }
             Spacer(Modifier.weight(1f))
-            ZoomControl(store, full = false)
-            SquareButton(Glyph.EXPAND, "Открыть страницу на весь экран", { store.openFullscreen(target) })
+            Box(center) { ZoomControl(store, full = false) }
+            SquareButton(Glyph.EXPAND, "Открыть страницу на весь экран", { store.openFullscreen(target) }, center)
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(C.divider))
         Box(Modifier.fillMaxWidth().heightIn(max = 640.dp).background(C.fill)) {
@@ -138,14 +151,46 @@ fun PageCanvas(store: AppStore, article: String, page: Int, marks: List<Mark>, z
             val ratio = bitmap.width.toFloat() / bitmap.height
             val density = LocalDensity.current
             val boxes = state.image.boxes
-            val focus = boxes.firstOrNull { marks.getOrNull(it.index)?.focus == true } ?: boxes.firstOrNull()
+            val focus = boxes.firstOrNull { marks.getOrNull(it.index)?.focus == true } ?: boxes.firstOrNull()?.takeIf { marks.any { it.focus } }
             LaunchedEffect(bitmap, zoom, focus) {
                 focus?.let { onFocus(with(density) { (width / ratio).toPx() } * it.top.toFloat()) }
             }
             Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                var menu by remember(bitmap, marks) { mutableStateOf<MarkMenuState?>(null) }
+                var pointed by remember(bitmap, marks) { mutableStateOf(false) }
+                val inset = with(density) { HIGHLIGHT_INSET.toPx() }
+                fun hit(offset: Offset, area: IntSize): Int? = boxes.firstOrNull { box ->
+                    offset.x in (box.left.toFloat() * area.width - inset)..(box.right.toFloat() * area.width + inset) &&
+                        offset.y in (box.top.toFloat() * area.height - inset)..(box.bottom.toFloat() * area.height + inset) &&
+                        marks.getOrNull(box.index)?.items?.isNotEmpty() == true
+                }?.index
                 Box(Modifier.width(width).aspectRatio(ratio).shadow(2.dp).background(Color.White)) {
                     Image(bitmap, contentDescription = "Страница $page", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
-                    Highlights(boxes, marks, store.dim, Modifier.fillMaxSize().then(if (store.dim && boxes.isNotEmpty()) Modifier.press(onClick = store::showWholePage) else Modifier))
+                    Highlights(
+                        boxes,
+                        marks,
+                        store.dim,
+                        Modifier.fillMaxSize()
+                            .pointerInput(boxes, marks) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        pointed = event.type != PointerEventType.Exit && event.changes.firstOrNull()?.let { hit(it.position, size) } != null
+                                    }
+                                }
+                            }
+                            .pointerInput(boxes, marks, store.dim) {
+                                detectTapGestures { offset ->
+                                    val index = hit(offset, size)
+                                    when {
+                                        index != null -> menu = MarkMenuState(marks[index].items, offset)
+                                        store.dim && boxes.isNotEmpty() -> store.showWholePage()
+                                    }
+                                }
+                            }
+                            .pointerHoverIcon(if (pointed || (store.dim && boxes.isNotEmpty())) PointerIcon.Hand else PointerIcon.Default),
+                    )
+                    menu?.let { state -> MarkMenu(store, state) { menu = null } }
                 }
                 if (marks.isNotEmpty() && boxes.isEmpty()) {
                     Text(
@@ -160,6 +205,37 @@ fun PageCanvas(store: AppStore, article: String, page: Int, marks: List<Mark>, z
         }
     }
 }
+
+private class MarkMenuState(val items: List<MarkItem>, val at: Offset)
+
+@Composable
+private fun MarkMenu(store: AppStore, state: MarkMenuState, onDismiss: () -> Unit) {
+    val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
+    Popup(popupPositionProvider = PointPosition(state.at, gap, below = true), onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        DisableSelection {
+            Column(
+                Modifier.widthIn(max = 380.dp).shadow(8.dp, R8).clip(R8).background(C.surface).heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+            ) {
+                state.items.forEachIndexed { index, item ->
+                    Column(Modifier.fillMaxWidth().topDivider(index > 0, C.divider, 0.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            when {
+                                item.kind == MarkKind.ISSUE -> Badge("Замечание", Tone.ERR)
+                                item.error -> Badge("Значение с замечанием", Tone.WARN)
+                                else -> Badge("Значение", Tone.INFO)
+                            }
+                        }
+                        Text(item.title, style = T.bodyMedium)
+                        item.detail?.let { Text(it, style = T.small, color = C.fg2, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+                        LinkButton("Подробнее", { store.openMarkItem(item) }, glyph = Glyph.RIGHT, small = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val HIGHLIGHT_INSET = 3.dp
 
 @Composable
 private fun Highlights(boxes: List<HighlightBox>, marks: List<Mark>, dim: Boolean, modifier: Modifier) {
@@ -194,7 +270,8 @@ private fun Highlights(boxes: List<HighlightBox>, marks: List<Mark>, dim: Boolea
 @Composable
 fun FullscreenViewer(store: AppStore, target: ViewerTarget) {
     val page = store.viewerPages[target.key] ?: target.home
-    val marks = target.marks[page].orEmpty()
+    val marks = store.fullscreenMarks(target, page)
+    val own = target.marks[page].orEmpty().size
     val title = store.articles[target.article]?.title ?: store.set?.articles?.firstOrNull { it.id == target.article }?.title.orEmpty()
     val scroll = rememberScrollState()
     val density = LocalDensity.current
@@ -204,20 +281,30 @@ fun FullscreenViewer(store: AppStore, target: ViewerTarget) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(Modifier.weight(1f).widthIn(min = 200.dp)) {
+            val center = Modifier.align(Alignment.CenterVertically)
+            Row(center.weight(1f).widthIn(min = 200.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(target.article, style = T.bodyMedium)
                 Text(" · $title", style = T.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            PageNav(store, target, page)
-            if (marks.isNotEmpty()) DefaultButton(if (store.dim) "Показать всю страницу" else "Приглушить лишнее", store::toggleDim)
-            ZoomControl(store, full = true)
-            DefaultButton("Закрыть", store::closeFullscreen, glyph = Glyph.CLOSE)
-            Kbd("Esc")
+            Box(center) { PageNav(store, target, page) }
+            Toggle(
+                "Все находки статьи" + (marks.size - own).takeIf { store.allMarks && it > 0 }?.let { " · $it на странице" }.orEmpty(),
+                store.allMarks,
+                { store.toggleAllMarks() },
+                center,
+            )
+            if (marks.isNotEmpty()) DefaultButton(if (store.dim) "Показать всю страницу" else "Приглушить лишнее", store::toggleDim, center)
+            Box(center) { ZoomControl(store, full = true) }
+            DefaultButton("Закрыть", store::closeFullscreen, center, glyph = Glyph.CLOSE)
+            Box(center) { Kbd("Esc") }
         }
-        Box(Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 48.dp), contentAlignment = Alignment.TopCenter) {
-            PageCanvas(store, target.article, page, marks, store.fullZoom, maxWidth = 980.dp) { top ->
-                scroll.animateScrollTo((top - with(density) { 120.dp.toPx() }).toInt().coerceAtLeast(0))
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 48.dp), contentAlignment = Alignment.TopCenter) {
+                PageCanvas(store, target.article, page, marks, store.fullZoom, maxWidth = 980.dp) { top ->
+                    scroll.animateScrollTo((top - with(density) { 120.dp.toPx() }).toInt().coerceAtLeast(0))
+                }
             }
+            ColumnScrollbar(scroll)
         }
     }
 }

@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -38,17 +38,20 @@ import cybergarden.vinity.app.ui.Alert
 import cybergarden.vinity.app.ui.AreasScreen
 import cybergarden.vinity.app.ui.ArticleScreen
 import cybergarden.vinity.app.ui.ArticlesScreen
+import cybergarden.vinity.app.ui.AskScreen
 import cybergarden.vinity.app.ui.C
 import cybergarden.vinity.app.ui.EvidencePanel
 import cybergarden.vinity.app.ui.FullscreenViewer
 import cybergarden.vinity.app.ui.Glyph
 import cybergarden.vinity.app.ui.LinkButton
+import cybergarden.vinity.app.ui.LocalScrollTop
 import cybergarden.vinity.app.ui.LocalWidth
 import cybergarden.vinity.app.ui.OverviewScreen
 import cybergarden.vinity.app.ui.QualityScreen
 import cybergarden.vinity.app.ui.R8
 import cybergarden.vinity.app.ui.Spinner
 import cybergarden.vinity.app.ui.T
+import cybergarden.vinity.app.ui.Text
 import cybergarden.vinity.app.ui.Tone
 import cybergarden.vinity.app.ui.TopBar
 import cybergarden.vinity.app.ui.ValuesScreen
@@ -62,34 +65,39 @@ fun App(apiUrl: String) {
     val store = remember { AppStore(VinityClient(apiUrl), scope) }
     LaunchedEffect(Unit) { store.start() }
 
-    VinityTheme {
+    VinityTheme(store.darkTheme) {
         BoxWithConstraints(Modifier.fillMaxSize().background(C.bg)) {
             val width = widthOf(maxWidth)
-            CompositionLocalProvider(LocalWidth provides width) {
-                val focus = remember { FocusRequester() }
-                LaunchedEffect(store.focusRequests) { runCatching { focus.requestFocus() } }
-                val side = width == Width.WIDE || width == Width.NARROW
-                Column(Modifier.fillMaxSize().focusRequester(focus).focusable().onKeyEvent { handleKey(store, it) }) {
-                    TopBar(store)
-                    store.error?.let { message ->
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Alert(Tone.ERR, Glyph.WARN) {
-                                Text(message, style = T.body)
-                                LinkButton("Скрыть", store::dismissError, small = true)
-                            }
-                        }
-                    }
-                    Row(Modifier.weight(1f).fillMaxWidth()) {
-                        Box(Modifier.weight(1f).fillMaxHeight()) { Screen(store) }
-                        if (side && store.evidence != null) EvidencePanel(store, Modifier.fillMaxHeight(), docked = true)
-                    }
-                }
-                if (!side && store.evidence != null) EvidencePanel(store, Modifier.fillMaxSize(), docked = false)
-                store.fullscreen?.let { FullscreenViewer(store, it) }
-                store.toast?.let { Toast(it) }
+            CompositionLocalProvider(LocalWidth provides width, LocalScrollTop provides store.scrollTop) {
+                SelectionContainer { Box(Modifier.fillMaxSize()) { Content(store, width) } }
             }
         }
     }
+}
+
+@Composable
+private fun Content(store: AppStore, width: Width) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(store.focusRequests) { runCatching { focus.requestFocus() } }
+    val side = width == Width.WIDE || width == Width.NARROW
+    Column(Modifier.fillMaxSize().focusRequester(focus).focusable().onKeyEvent { handleKey(store, it) }) {
+        TopBar(store)
+        store.error?.let { message ->
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Alert(Tone.ERR, Glyph.WARN) {
+                    Text(message, style = T.body)
+                    LinkButton("Скрыть", store::dismissError, small = true)
+                }
+            }
+        }
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxHeight()) { Screen(store) }
+            if (side && store.evidence != null) EvidencePanel(store, Modifier.fillMaxHeight(), docked = true)
+        }
+    }
+    if (!side && store.evidence != null) EvidencePanel(store, Modifier.fillMaxSize(), docked = false)
+    store.fullscreen?.let { FullscreenViewer(store, it) }
+    store.toast?.let { Toast(it) }
 }
 
 @Composable
@@ -105,6 +113,7 @@ private fun Screen(store: AppStore) {
         AppScreen.OVERVIEW -> OverviewScreen(store)
         AppScreen.QUALITY -> QualityScreen(store)
         AppScreen.AREAS -> AreasScreen(store)
+        AppScreen.ASK -> AskScreen(store)
     }
 }
 

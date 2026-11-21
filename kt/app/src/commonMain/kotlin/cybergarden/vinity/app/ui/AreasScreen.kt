@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,10 +62,10 @@ private fun SystemBlock(system: SystemDto) {
     )
     Block {
         SectionHeader("Система в цифрах", "По всем наборам: эталон или результат системы, что есть")
-        AdaptiveGrid(numbers.size, 140.dp, gap = 0.dp) { index, modifier ->
-            Column(modifier.padding(12.dp)) {
+        AdaptiveGrid(numbers.size, 140.dp, gap = 0.dp, equalHeight = true) { index, modifier ->
+            Column(modifier.padding(12.dp), verticalArrangement = Arrangement.Bottom) {
                 Muted(numbers[index].first, small = true)
-                Text(grouped(numbers[index].second), style = T.big)
+                Text(grouped(numbers[index].second), Modifier.padding(top = 2.dp), style = T.big)
             }
         }
     }
@@ -169,7 +168,7 @@ private fun DemoRow(store: AppStore, case: DemoCaseDto, first: Boolean) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(case.title, style = T.body)
-            Muted(case.detail, small = true)
+            Muted(case.detail, Modifier.subline(), small = true)
         }
         GhostButton(Glyph.LINK, "Скопировать ссылку", { AppRoute.parse(case.route)?.let { store.copyLink(it) } })
         DefaultButton("Открыть", { store.openRoute(case.route) }, glyph = Glyph.PLAY)

@@ -1,13 +1,18 @@
 package cybergarden.vinity.app
 
 import androidx.compose.ui.graphics.ImageBitmap
+import cybergarden.vinity.api.AnswerDto
 import cybergarden.vinity.api.ApiRoutes
 import cybergarden.vinity.api.ArticleDto
+import cybergarden.vinity.api.AskRequestDto
 import cybergarden.vinity.api.ComparisonDto
 import cybergarden.vinity.api.DemoCaseDto
 import cybergarden.vinity.api.HighlightBox
 import cybergarden.vinity.api.IssueReviewRequestDto
 import cybergarden.vinity.api.OverviewDto
+import cybergarden.vinity.api.PageRequestDto
+import cybergarden.vinity.api.PassportDto
+import cybergarden.vinity.api.ProcessingDto
 import cybergarden.vinity.api.ProfileDto
 import cybergarden.vinity.api.ProfileUploadDto
 import cybergarden.vinity.api.QualityDto
@@ -96,8 +101,9 @@ class VinityClient(val baseUrl: String) {
         }.body()
 
     suspend fun page(ref: SetRef, id: String, page: Int, fragments: List<String>): PageImage? {
-        val response = http.get(baseUrl + ApiRoutes.page(ref, id, page)) {
-            fragments.forEach { parameter(ApiRoutes.FRAGMENT_PARAMETER, it) }
+        val response = http.post(baseUrl + ApiRoutes.page(ref, id, page)) {
+            contentType(ContentType.Application.Json)
+            setBody(PageRequestDto(fragments))
         }
         if (!response.status.isSuccess()) return null
         val bytes: ByteArray = response.body()
@@ -110,6 +116,22 @@ class VinityClient(val baseUrl: String) {
 
     suspend fun quality(ref: SetRef, source: SourceDto?): QualityDto? =
         http.get(baseUrl + ApiRoutes.quality(ref)) { source(source) }.takeIf { it.status.isSuccess() }?.body()
+
+    suspend fun passport(ref: SetRef, source: SourceDto?): PassportDto? =
+        http.get(baseUrl + ApiRoutes.passport(ref)) { source(source) }.takeIf { it.status.isSuccess() }?.body()
+
+    fun passportUrl(ref: SetRef, source: SourceDto?): String =
+        baseUrl + ApiRoutes.passport(ref) + "?${ApiRoutes.DOWNLOAD_PARAMETER}=true" + (source?.let { "&${ApiRoutes.SOURCE_PARAMETER}=${it.name}" } ?: "")
+
+    suspend fun ask(ref: SetRef, source: SourceDto?, question: String): AnswerDto {
+        val response = http.post(baseUrl + ApiRoutes.ask(ref)) {
+            source(source)
+            contentType(ContentType.Application.Json)
+            setBody(AskRequestDto(question))
+        }
+        check(response.status.isSuccess()) { "сервер ответил ${response.status}" }
+        return response.body()
+    }
 
     suspend fun overview(ref: SetRef, source: SourceDto?): OverviewDto? =
         http.get(baseUrl + ApiRoutes.overview(ref)) { source(source) }.takeIf { it.status.isSuccess() }?.body()
@@ -131,6 +153,9 @@ class VinityClient(val baseUrl: String) {
         }
         check(response.status.isSuccess()) { "сервер ответил ${response.status}" }
     }
+
+    suspend fun processArticle(ref: SetRef, id: String): ProcessingDto? =
+        http.post(baseUrl + ApiRoutes.process(ref, id)).takeIf { it.status.isSuccess() }?.body()
 
     suspend fun uploadArticle(profile: String, file: LocalFile, onProgress: (Long, Long) -> Unit): UploadDto =
         json.decodeFromString(postFiles(baseUrl + ApiRoutes.uploads(profile), ApiRoutes.FILE_PART, listOf(file), onProgress))

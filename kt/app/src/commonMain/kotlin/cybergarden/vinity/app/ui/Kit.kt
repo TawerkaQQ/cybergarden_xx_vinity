@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -23,15 +24,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
@@ -52,6 +56,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,7 +65,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupPositionProvider
+import kotlin.math.roundToInt
 
 val R6 = RoundedCornerShape(6.dp)
 val R8 = RoundedCornerShape(8.dp)
@@ -80,7 +92,28 @@ private fun Tone.colors(): ToneColors = when (this) {
     Tone.OFF -> ToneColors(C.surface2, C.border, C.fg2, C.fg3)
 }
 
-fun Modifier.hand(): Modifier = pointerHoverIcon(PointerIcon.Hand)
+fun Modifier.hand(): Modifier = pointerHoverIcon(PointerIcon.Hand, overrideDescendants = true)
+
+@Composable
+fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    textAlign: TextAlign? = null,
+    overflow: TextOverflow = TextOverflow.Clip,
+    maxLines: Int = Int.MAX_VALUE,
+    style: TextStyle = LocalTextStyle.current,
+) {
+    MaterialText(
+        text,
+        modifier.pointerHoverIcon(PointerIcon.Default, overrideDescendants = true),
+        color = color,
+        textAlign = textAlign,
+        overflow = overflow,
+        maxLines = maxLines,
+        style = style,
+    )
+}
 
 fun Modifier.press(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
     val source = remember { MutableInteractionSource() }
@@ -117,7 +150,7 @@ fun Badge(text: String, tone: Tone = Tone.NEUTRAL, modifier: Modifier = Modifier
         val edge = if (tone == Tone.MISS) Modifier.dashedBorder(colors.border, 16.dp) else Modifier.border(1.dp, colors.border, Pill)
         Text(
             text,
-            modifier.then(shape).then(edge).padding(horizontal = 8.dp),
+            modifier.then(shape).then(edge).padding(horizontal = 10.dp, vertical = 2.dp),
             style = T.small.copy(lineHeight = T.small.fontSize * 1.5f),
             color = colors.ink,
             maxLines = 1,
@@ -138,7 +171,7 @@ fun FieldRow(label: String, first: Boolean, modifier: Modifier = Modifier, value
         verticalAlignment = Alignment.Top,
     ) {
         Text(label, Modifier.weight(1f), style = T.body, color = C.fg2)
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, content = value)
+        Column(Modifier.weight(if (LocalWidth.current == Width.PHONE) 2f else 1f), horizontalAlignment = Alignment.End, content = value)
     }
 }
 
@@ -156,7 +189,7 @@ fun SectionHeader(title: String, hint: String? = null, modifier: Modifier = Modi
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = T.h3)
-            hint?.let { Text(it, Modifier.padding(top = 2.dp), style = T.small, color = C.fg2) }
+            hint?.let { Text(it, Modifier.subline(), style = T.small, color = C.fg2) }
         }
         right?.invoke()
     }
@@ -164,10 +197,18 @@ fun SectionHeader(title: String, hint: String? = null, modifier: Modifier = Modi
 
 @Composable
 fun PageHeader(title: String, subtitle: String?, modifier: Modifier = Modifier, right: (@Composable RowScope.() -> Unit)? = null) {
+    if (LocalWidth.current == Width.PHONE) {
+        Column(modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+            Text(title, style = T.h1)
+            subtitle?.let { Text(it, Modifier.subline(), style = T.body, color = C.fg2) }
+            right?.let { content -> Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() } }
+        }
+        return
+    }
     Row(modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
             Text(title, style = T.h1)
-            subtitle?.let { Text(it, style = T.body, color = C.fg2) }
+            subtitle?.let { Text(it, Modifier.subline(), style = T.body, color = C.fg2) }
         }
         right?.invoke(this)
     }
@@ -185,7 +226,7 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
             .hoverable(source)
             .clickable(source, indication = null, enabled = enabled, onClick = onClick)
             .then(if (enabled) Modifier.hand() else Modifier)
-            .padding(horizontal = 16.dp, vertical = 5.dp),
+            .padding(horizontal = 20.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
@@ -207,7 +248,7 @@ fun DefaultButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
             .hoverable(source)
             .clickable(source, indication = null, enabled = enabled, onClick = onClick)
             .then(if (enabled) Modifier.hand() else Modifier)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 18.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
@@ -239,7 +280,7 @@ fun SquareButton(glyph: Glyph, description: String, onClick: () -> Unit, modifie
     WithHint(description) {
         Box(
             modifier
-                .size(32.dp)
+                .size(36.dp)
                 .shadow(if (enabled) 1.dp else 0.dp, R8)
                 .clip(R8)
                 .background(C.surface)
@@ -254,7 +295,7 @@ fun SquareButton(glyph: Glyph, description: String, onClick: () -> Unit, modifie
 }
 
 @Composable
-fun GhostButton(glyph: Glyph, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun GhostButton(glyph: Glyph, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 16.dp) {
     val source = remember { MutableInteractionSource() }
     val hover = hovered(source)
     WithHint(description) {
@@ -268,14 +309,15 @@ fun GhostButton(glyph: Glyph, description: String, onClick: () -> Unit, modifier
                 .padding(4.dp),
             contentAlignment = Alignment.Center,
         ) {
-            GlyphIcon(glyph, if (hover) C.fg else C.fg2)
+            GlyphIcon(glyph, if (hover) C.fg else C.fg2, size = size)
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun <K> Segmented(options: List<Pair<K, String>>, selected: K, onSelect: (K) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.clip(R8).background(C.fill).padding(2.dp)) {
+    FlowRow(modifier.clip(R8).background(C.fill).padding(2.dp)) {
         options.forEach { (key, label) ->
             val active = key == selected
             Text(
@@ -374,7 +416,7 @@ fun InputBox(
             ) {
                 glyph?.let { GlyphIcon(it, C.fg2) }
                 Box(Modifier.weight(1f)) {
-                    if (value.isEmpty()) Text(placeholder, style = T.body, color = C.fg3, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (value.isEmpty()) MaterialText(placeholder, style = T.body, color = C.fg3, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     field()
                 }
             }
@@ -394,18 +436,30 @@ fun Alert(tone: Tone, glyph: Glyph, modifier: Modifier = Modifier, dashed: Boole
             .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        GlyphIcon(glyph, colors.icon, Modifier.padding(top = 3.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
+        LeadingGlyph(glyph, colors.icon)
+        Column(Modifier.weight(1f).alignByBaseline(), verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
     }
 }
 
 @Composable
 fun Explain(text: String, modifier: Modifier = Modifier, bold: String? = null) {
     Row(modifier.fillMaxWidth().clip(R8).background(C.surface).padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        GlyphIcon(Glyph.INFO, C.primary, Modifier.padding(top = 3.dp))
-        Text(if (bold == null) text else "$bold $text", style = T.body)
+        LeadingGlyph(Glyph.INFO, C.primary)
+        Text(if (bold == null) text else "$bold $text", Modifier.weight(1f).alignByBaseline(), style = T.body)
     }
 }
+
+@Composable
+fun RowScope.LeadingGlyph(glyph: Glyph, tint: Color) {
+    val lift = with(LocalDensity.current) { GLYPH_LIFT.roundToPx() }
+    GlyphIcon(glyph, tint, Modifier.alignBy { it.measuredHeight / 2 + lift })
+}
+
+private val GLYPH_LIFT = 4.5.dp
+
+fun Modifier.subline(): Modifier = padding(top = SUBLINE_GAP)
+
+private val SUBLINE_GAP = 4.dp
 
 @Composable
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
@@ -468,7 +522,7 @@ class TabSpec<K>(val key: K, val label: String, val count: Int? = null)
 
 @Composable
 fun <K> UnderlineTabs(tabs: List<TabSpec<K>>, selected: K?, onSelect: (K) -> Unit, modifier: Modifier = Modifier, vertical: Dp = 10.dp) {
-    Row(modifier) {
+    Row(modifier.horizontalScroll(rememberScrollState())) {
         tabs.forEach { tab ->
             val active = tab.key == selected
             val ink = if (active) C.primary else C.fg
@@ -487,7 +541,7 @@ fun <K> UnderlineTabs(tabs: List<TabSpec<K>>, selected: K?, onSelect: (K) -> Uni
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(tab.label, style = T.body, color = ink, maxLines = 1)
-                tab.count?.let { Text(it.toString(), style = T.small, color = if (active) C.primary else C.fg2) }
+                tab.count?.let { Text(it.toString(), style = T.small, color = if (active) C.primary else C.fg2, maxLines = 1) }
             }
         }
     }
@@ -502,7 +556,7 @@ fun WithHint(hint: String?, content: @Composable () -> Unit) {
     }
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-        tooltip = { PlainTooltip { Text(hint, Modifier.widthIn(max = 320.dp), style = T.small, color = C.surface) } },
+        tooltip = { PlainTooltip { DisableSelection { Text(hint, Modifier.widthIn(max = 320.dp), style = T.small, color = C.surface) } } },
         state = rememberTooltipState(),
         content = content,
     )
@@ -516,4 +570,25 @@ fun Muted(text: String, modifier: Modifier = Modifier, small: Boolean = false, m
 @Composable
 fun Bold(text: String, modifier: Modifier = Modifier, color: Color = C.fg) {
     Text(text, modifier, style = T.body.copy(fontWeight = FontWeight.Medium), color = color)
+}
+
+class PointPosition(private val anchor: Offset, private val gap: Int, private val below: Boolean = false) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val pointerX = anchorBounds.left + anchor.x.roundToInt()
+        val pointerY = anchorBounds.top + anchor.y.roundToInt()
+        val right = pointerX + gap
+        val x = if (right + popupContentSize.width <= windowSize.width) right else pointerX - gap - popupContentSize.width
+        val above = pointerY - gap - popupContentSize.height
+        val under = pointerY + gap
+        val y = when {
+            below && under + popupContentSize.height <= windowSize.height -> under
+            below -> above
+            above >= 0 -> above
+            else -> under
+        }
+        return IntOffset(
+            x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+            y.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
+        )
+    }
 }

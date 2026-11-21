@@ -1,11 +1,14 @@
 package cybergarden.vinity.app.ui
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,8 +16,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -34,9 +41,37 @@ fun widthOf(width: Dp): Width = when {
     else -> Width.WIDE
 }
 
+val LocalScrollTop = compositionLocalOf { 0 }
+
 @Composable
 fun ScreenList(key: Any, modifier: Modifier = Modifier, state: LazyListState = remember(key) { LazyListState() }, content: LazyListScope.() -> Unit) {
-    LazyColumn(modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp), content = content)
+    ScrollToTop(state)
+    Box(modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp), content = content)
+        ListScrollbar(state)
+    }
+}
+
+@Composable
+fun ScrollToTop(state: LazyListState) {
+    val request = LocalScrollTop.current
+    val seen = remember { mutableIntStateOf(request) }
+    LaunchedEffect(request) {
+        if (request != seen.intValue) {
+            seen.intValue = request
+            state.animateScrollToItem(0)
+        }
+    }
+}
+
+@Composable
+fun BoxScope.ListScrollbar(state: LazyListState) {
+    VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(2.dp))
+}
+
+@Composable
+fun BoxScope.ColumnScrollbar(state: ScrollState) {
+    VerticalScrollbar(rememberScrollbarAdapter(state), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(2.dp))
 }
 
 fun LazyListScope.centered(key: Any? = null, content: @Composable () -> Unit) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,11 +21,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cybergarden.vinity.api.ArticleSummaryDto
+import cybergarden.vinity.api.ProcessingDto
 import cybergarden.vinity.api.SetDto
 import cybergarden.vinity.api.SourceDto
 import cybergarden.vinity.app.AppStore
@@ -49,9 +50,12 @@ fun ArticlesScreen(store: AppStore) {
     val set = store.set ?: return
     val wide = LocalWidth.current == Width.WIDE
     if (wide) {
+        val listState = rememberLazyListState()
+        ScrollToTop(listState)
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            ListScrollbar(listState)
             Row(Modifier.widthIn(max = 1240.dp).fillMaxHeight().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = rememberLazyListState(), contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp)) {
+                LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = listState, contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp)) {
                     articleList(store, set, inset = false)
                 }
                 Column(Modifier.width(360.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(top = 20.dp, bottom = 40.dp)) {
@@ -174,14 +178,14 @@ private fun ArticleRow(store: AppStore, article: ArticleSummaryDto, first: Boole
         Box(Modifier.width(8.dp)) { if (store.isUnseen(article.id)) NewDot("Новая, ещё не открыта") }
         Column(Modifier.weight(1f)) {
             Text(article.title ?: article.id, style = T.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(article.meta(), style = T.small.copy(lineHeight = T.small.fontSize * 1.5f), color = C.fg2)
-            article.exclusionReason?.takeIf { article.inScope == false }?.let { Text(it, style = T.small, color = C.fg2) }
+            Text(article.meta(), Modifier.subline(), style = T.small, color = C.fg2)
+            article.exclusionReason?.takeIf { article.inScope == false }?.let { Text(it, Modifier.padding(top = 2.dp), style = T.small, color = C.fg2) }
         }
         FlowRow(Modifier.widthIn(max = 280.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (article.issueCount > 0) Badge(plural(article.issueCount, Issues), Tone.ERR)
             if (article.scan) Badge("Скан", Tone.WARN)
             if (article.inScope == false) Badge("Вне области")
-            if (!article.processed) Badge("Не обработана", hint = "Значений пока нет: статью ещё не обработал конвейер")
+            ProcessingBadge(article.processing, article.processed)
         }
         GlyphIcon(Glyph.RIGHT, C.fg3)
     }
@@ -194,6 +198,7 @@ private fun UploadRail(store: AppStore) {
             Text("Загрузка статей", style = T.h2)
             Text(
                 "PDF, можно несколько файлов сразу. Статьи попадают в набор «загруженные» выбранной области.",
+                Modifier.subline(),
                 style = T.small,
                 color = C.fg2,
             )
@@ -220,23 +225,25 @@ private fun ProfileSelect(store: AppStore, modifier: Modifier) {
             GlyphIcon(Glyph.DOWN, C.fg2)
         }
         DropdownMenu(open, { open = false }, Modifier.background(C.surface)) {
-            store.profiles.forEach { profile ->
-                val checked = profile.name == selected?.name
-                Text(
-                    profile.title,
-                    Modifier
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                        .widthIn(min = 240.dp)
-                        .clip(R6)
-                        .background(if (checked) C.primary1 else Color.Transparent)
-                        .press {
-                            store.uploadProfile = profile.name
-                            open = false
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = T.body,
-                    color = if (checked) C.primaryInk else C.fg,
-                )
+            DisableSelection {
+                store.profiles.forEach { profile ->
+                    val checked = profile.name == selected?.name
+                    Text(
+                        profile.title,
+                        Modifier
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .widthIn(min = 240.dp)
+                            .clip(R6)
+                            .background(if (checked) C.primary1 else Color.Transparent)
+                            .press {
+                                store.uploadProfile = profile.name
+                                open = false
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = T.body,
+                        color = if (checked) C.primaryInk else C.fg,
+                    )
+                }
             }
         }
     }
@@ -280,6 +287,14 @@ private fun UploadQueue(store: AppStore) {
 }
 
 @Composable
+fun ProcessingBadge(processing: ProcessingDto?, processed: Boolean) {
+    when {
+        processing != null && processing.shown() -> Badge(processing.title(), processing.tone(), hint = processing.hint())
+        !processed -> Badge("Не обработана", hint = "Значений пока нет: статью ещё не обработал конвейер")
+    }
+}
+
+@Composable
 private fun UploadRow(store: AppStore, item: UploadItem) {
     Column(Modifier.fillMaxWidth().topDivider(true, C.divider, 0.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -301,7 +316,11 @@ private fun UploadRow(store: AppStore, item: UploadItem) {
         when (item.stage) {
             UploadStage.DONE -> item.result?.let { result ->
                 Alert(Tone.OK, Glyph.CHECK) {
-                    Text("Статья ${result.added.joinToString()} в наборе «загруженные». Значения появятся после обработки конвейером.", style = T.body)
+                    Text(
+                        if (result.queued.isNotEmpty()) "Статья ${result.added.joinToString()} в наборе «загруженные». Конвейер уже обрабатывает её — значения появятся сами."
+                        else "Статья ${result.added.joinToString()} в наборе «загруженные». Значения появятся после обработки конвейером.",
+                        style = T.body,
+                    )
                     result.added.firstOrNull()?.let { id -> LinkButton("Открыть статью", { store.openArticle(id, result.ref) }) }
                 }
             }

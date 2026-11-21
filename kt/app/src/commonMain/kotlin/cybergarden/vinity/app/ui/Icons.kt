@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 
 enum class Glyph(vararg val paths: String) {
     PLUS("M8 3v10M3 8h10"),
+    SUN(circle(8f, 8f, 3f), "M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"),
+    MOON("M13.5 9.6A5.6 5.6 0 1 1 6.4 2.5a4.4 4.4 0 0 0 7.1 7.1z"),
     UPLOAD("M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"),
     SEARCH(circle(7f, 7f, 4.5f), "m10.5 10.5 3 3"),
     CLOSE("m4 4 8 8M12 4l-8 8"),

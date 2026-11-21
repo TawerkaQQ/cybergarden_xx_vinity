@@ -1,13 +1,19 @@
 package cybergarden.vinity.app
 
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.skia.Image
 import org.w3c.dom.DragEvent
 import org.w3c.dom.HTMLAnchorElement
+import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 import org.w3c.files.File
 import org.w3c.files.FileList
@@ -15,8 +21,6 @@ import org.w3c.files.get
 import org.w3c.xhr.FormData
 import org.w3c.xhr.ProgressEvent
 import org.w3c.xhr.XMLHttpRequest
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 private const val DEV_SERVER_PORT = "8080"
 private const val API_PORT = "8081"
@@ -117,3 +121,23 @@ private fun FileList?.toLocalFiles(): List<LocalFile> {
     if (this == null) return emptyList()
     return (0 until length).mapNotNull { index -> get(index)?.let(::LocalFile) }
 }
+
+actual fun loadSetting(key: String): String? = runCatching { window.localStorage.getItem(key) }.getOrNull()
+
+actual fun saveSetting(key: String, value: String?) {
+    runCatching { if (value == null) window.localStorage.removeItem(key) else window.localStorage.setItem(key, value) }
+}
+
+actual fun Modifier.resizeCursor(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent()
+            val canvas = document.querySelector(CANVAS) as? HTMLElement ?: continue
+            canvas.style.cursor = if (event.type == PointerEventType.Exit) DEFAULT_CURSOR else RESIZE_CURSOR
+        }
+    }
+}
+
+private const val CANVAS = "body > canvas"
+private const val RESIZE_CURSOR = "col-resize"
+private const val DEFAULT_CURSOR = "default"

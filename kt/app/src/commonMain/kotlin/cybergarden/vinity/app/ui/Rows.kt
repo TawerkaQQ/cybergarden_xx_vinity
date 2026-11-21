@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -93,7 +92,7 @@ private fun MetricCell(store: AppStore, value: ValueDto, showRecord: Boolean, mo
             Text(title, style = T.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             value.metric?.takeIf { it != title }?.let { Text(it, Modifier.padding(start = 6.dp), style = T.body, color = C.fg2, maxLines = 1) }
         }
-        Text(sub, style = T.small, color = C.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(sub, Modifier.subline(), style = T.small, color = C.fg2, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -122,8 +121,10 @@ private fun ValueBadges(store: AppStore, value: ValueDto, extra: Boolean, modifi
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp, alignment), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         value.review?.let { Badge(it.state.title(), it.state.tone()) }
         if (issues > 0) Badge("Замечание", Tone.ERR)
-        if (extra) Badge("Лишнее", Tone.WARN, hint = "У экспертов этого значения нет")
+        if (extra && value.quote.status.found()) Badge("Сверх эталона", Tone.INFO, hint = BeyondGoldHint)
+        else if (extra) Badge("Лишнее", Tone.WARN, hint = "У экспертов этого значения нет")
         if (value.duplicateOf != null) Badge("Повтор", hint = "То же число, найденное в другом месте статьи")
+        value.repeats.firstOrNull()?.let { Badge("Есть в ${it.publicationId}", Tone.INFO, hint = RepeatHint) }
     }
 }
 
@@ -159,7 +160,7 @@ fun IssueCard(store: AppStore, issue: IssueDto, gold: Boolean?, withArticle: Boo
     Alert(if (off) Tone.OFF else Tone.ERR, Glyph.WARN) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(profile.checkTitle(issue.check), style = T.alert, color = if (off) C.fg2 else C.fg, modifier = Modifier.weight(1f, fill = false))
-            if (withArticle) Text(issue.publicationId, style = T.small, color = C.fg2)
+            if (withArticle) Text(issue.publicationId, Modifier.subline(), style = T.small, color = C.fg2)
         }
         val badges = issue.review != null || gold != null
         if (badges) {
@@ -173,7 +174,7 @@ fun IssueCard(store: AppStore, issue: IssueDto, gold: Boolean?, withArticle: Boo
             }
         }
         issue.description?.let { Text(it, style = T.body, color = if (off) C.fg2 else C.fg) }
-        issue.review?.reason?.takeIf { off }?.let { Text("Причина: $it", style = T.small, color = C.fg2) }
+        issue.review?.reason?.takeIf { off }?.let { Text("Причина: $it", Modifier.subline(), style = T.small, color = C.fg2) }
         profile.checkRule(issue.check)?.let { Text("Правило: $it", style = T.small, color = C.fg2) }
         if (issue.values.isNotEmpty()) {
             FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -194,7 +195,7 @@ fun MissedIssueCard(profile: ProfileDto?, issue: IssueDto, withArticle: Boolean 
     Alert(Tone.NEUTRAL, Glyph.WARN, dashed = true) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(profile.checkTitle(issue.check), style = T.alert)
-            if (withArticle) Text(issue.publicationId, style = T.small, color = C.fg2)
+            if (withArticle) Text(issue.publicationId, Modifier.subline(), style = T.small, color = C.fg2)
         }
         Row(Modifier.padding(vertical = 4.dp)) { Badge("Есть у экспертов, система пропустила", Tone.MISS) }
         issue.description?.let { Text(it, style = T.body) }
@@ -205,7 +206,7 @@ fun MissedIssueCard(profile: ProfileDto?, issue: IssueDto, withArticle: Boolean 
 fun ArticleLabel(id: String, title: String?) {
     Column {
         Text(id, style = T.body.copy(fontWeight = FontWeight.Medium))
-        title?.let { Text(it, style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp)) }
+        title?.let { Text(it, style = T.small, color = C.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.subline().widthIn(max = 220.dp)) }
     }
 }
 

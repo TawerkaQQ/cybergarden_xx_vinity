@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import cybergarden.vinity.api.ArticleDto
 import cybergarden.vinity.api.ComparisonDto
 import cybergarden.vinity.api.IssueReviewStateDto
+import cybergarden.vinity.api.ProcessingStateDto
 import cybergarden.vinity.api.ProfileDto
 import cybergarden.vinity.api.ValueDto
 import cybergarden.vinity.api.ValueKindDto
@@ -63,7 +63,7 @@ private fun ArticleHeader(store: AppStore, article: ArticleDto) {
             Text(article.title ?: article.id, style = T.h1)
             FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 when {
-                    !article.processed -> Badge("Не обработана")
+                    !article.processed || article.processing.shown() -> ProcessingBadge(article.processing, article.processed)
                     article.inScope == false -> Badge("Вне области")
                     else -> Badge("В области", Tone.OK)
                 }
@@ -84,6 +84,16 @@ private fun ArticleHeader(store: AppStore, article: ArticleDto) {
             }
         }
         FieldRow("DOI", first = false) { Text(article.doi ?: "—", style = T.mono, textAlign = TextAlign.End) }
+        if (article.overlaps.isNotEmpty()) {
+            FieldRow("Те же результаты", first = false) {
+                Text("Совпадают метрика, число и единица у нескольких значений", style = T.small, color = C.fg2, textAlign = TextAlign.End)
+                FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    article.overlaps.forEach { overlap ->
+                        Chip("${overlap.publicationId} · ${plural(overlap.values, Values)}", pressed = false, onClick = { store.openArticle(overlap.publicationId) }, hint = store.set?.articles?.firstOrNull { it.id == overlap.publicationId }?.title)
+                    }
+                }
+            }
+        }
         if (article.pageCount != null) FieldRow("PDF", first = false) { LinkButton("Листать страницы", { openPdf(store, article) }, glyph = Glyph.EXPAND) }
         article.exclusionReason?.takeIf { article.inScope == false }?.let { FieldRow("Почему вне области", it, first = false) }
     }
@@ -121,19 +131,46 @@ private fun ArticleTabs(store: AppStore, article: ArticleDto) {
     }
 }
 
+@Composable
+private fun UnprocessedBlock(store: AppStore, article: ArticleDto) {
+    val processing = article.processing
+    val pipeline = store.set?.pipeline
+    val canProcess = pipeline?.available == true
+    Box(Modifier.padding(top = 12.dp)) {
+        when {
+            processing?.active == true -> Alert(Tone.INFO, Glyph.INFO) {
+                Text(if (processing.state == ProcessingStateDto.QUEUED) "Статья ждёт очереди конвейера" else "Статью обрабатывает конвейер", style = T.alert)
+                val details = listOfNotNull(processing.step, processing.seconds?.let { "идёт ${durationText(it)}" }, pipeline?.model?.let { "модель $it" })
+                if (details.isNotEmpty()) Text(details.joinToString(" · "), style = T.body, color = C.fg2)
+                Text("Значения появятся здесь сами, когда обработка закончится. Страницы PDF уже можно листать.", style = T.body)
+                Row(Modifier.padding(top = 8.dp)) { DefaultButton("Открыть PDF", { openPdf(store, article) }, glyph = Glyph.EXPAND) }
+            }
+            processing?.state == ProcessingStateDto.FAILED -> Alert(Tone.ERR, Glyph.WARN) {
+                Text("Конвейер не смог обработать статью", style = T.alert)
+                processing.problem?.let { Text(it, style = T.body) }
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (canProcess) PrimaryButton("Обработать заново", { store.processArticle(article.id) })
+                    DefaultButton("Открыть PDF", { openPdf(store, article) }, glyph = Glyph.EXPAND)
+                }
+            }
+            else -> Alert(Tone.INFO, Glyph.INFO) {
+                Text("Значения ещё не извлечены", style = T.alert)
+                Text("У статьи нет ни результата системы, ни эталона: её ещё не обработал конвейер. Страницы PDF уже можно листать.", style = T.body)
+                if (!canProcess) pipeline?.problem?.let { Text("Обработка недоступна: $it", style = T.body, color = C.fg2) }
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (canProcess) PrimaryButton("Обработать конвейером", { store.processArticle(article.id) })
+                    DefaultButton("Открыть PDF", { openPdf(store, article) }, glyph = Glyph.EXPAND)
+                }
+            }
+        }
+    }
+}
+
 private class ValueGroup(val key: String, val title: String, val hint: String?, val values: List<ValueDto>, val missed: List<ValueDto>)
 
 private fun LazyListScope.valuesTab(store: AppStore, article: ArticleDto, comparison: ComparisonDto?) {
     if (!article.processed) {
-        centered("unprocessed") {
-            Box(Modifier.padding(top = 12.dp)) {
-                Alert(Tone.INFO, Glyph.INFO) {
-                    Text("Значения ещё не извлечены", style = T.alert)
-                    Text("У статьи нет ни результата системы, ни эталона: её ещё не обработал конвейер. Страницы PDF уже можно листать.", style = T.body)
-                    Row(Modifier.padding(top = 8.dp)) { DefaultButton("Открыть PDF", { openPdf(store, article) }, glyph = Glyph.EXPAND) }
-                }
-            }
-        }
+        centered("unprocessed") { UnprocessedBlock(store, article) }
         return
     }
     if (article.inScope == false) {

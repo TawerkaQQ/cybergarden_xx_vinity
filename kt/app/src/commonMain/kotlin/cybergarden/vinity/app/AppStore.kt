@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import cybergarden.vinity.api.AnswerDto
 import cybergarden.vinity.api.AppRoute
 import cybergarden.vinity.api.AppScreen
 import cybergarden.vinity.api.ArticleDto
@@ -18,6 +19,8 @@ import cybergarden.vinity.api.IssueReviewDto
 import cybergarden.vinity.api.IssueReviewRequestDto
 import cybergarden.vinity.api.IssueReviewStateDto
 import cybergarden.vinity.api.OverviewDto
+import cybergarden.vinity.api.PassportDto
+import cybergarden.vinity.api.ProcessingStateDto
 import cybergarden.vinity.api.ProfileDto
 import cybergarden.vinity.api.ProfileUploadDto
 import cybergarden.vinity.api.QualityDto
@@ -34,6 +37,12 @@ import cybergarden.vinity.api.ValueReviewRequestDto
 import cybergarden.vinity.api.ValueReviewStateDto
 import cybergarden.vinity.api.ValueSortDto
 import cybergarden.vinity.api.ValueTableDto
+import cybergarden.vinity.app.ui.Values
+import cybergarden.vinity.app.ui.checkTitle
+import cybergarden.vinity.app.ui.fixedAmount
+import cybergarden.vinity.app.ui.metricTitle
+import cybergarden.vinity.app.ui.pageAndPlace
+import cybergarden.vinity.app.ui.plural
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -46,7 +55,9 @@ enum class ListFilter { ALL, ISSUES, OUT }
 
 enum class GroupBy { RECORD, METRIC }
 
-enum class QualityTab(val slug: String) { EXTRACT("extract"), QUOTES("quotes"), NORMALIZATION("norm"), CHECKS("checks") }
+class TableSort(val column: Int, val descending: Boolean)
+
+enum class QualityTab(val slug: String) { EXTRACT("extract"), QUOTES("quotes"), NORMALIZATION("norm"), CHECKS("checks"), PASSPORT("passport") }
 
 sealed interface Evidence {
     val article: String
@@ -56,7 +67,11 @@ sealed interface Evidence {
     data class OnIssue(override val article: String, override val id: String) : Evidence
 }
 
-data class Mark(val fragment: String, val error: Boolean, val focus: Boolean)
+data class Mark(val fragment: String, val error: Boolean, val focus: Boolean, val items: List<MarkItem> = emptyList())
+
+enum class MarkKind { VALUE, ISSUE }
+
+data class MarkItem(val kind: MarkKind, val title: String, val detail: String?, val error: Boolean, val evidence: Evidence)
 
 data class ViewerTarget(val key: String, val article: String, val home: Int, val pageCount: Int?, val marks: Map<Int, List<Mark>>)
 
@@ -110,6 +125,10 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         private set
     var fullscreen by mutableStateOf<ViewerTarget?>(null)
         private set
+    var allMarks by mutableStateOf(true)
+        private set
+    var tableSorts by mutableStateOf(emptyMap<String, TableSort>())
+        private set
 
     var valueFilter by mutableStateOf(ValueFilter())
         private set
@@ -129,6 +148,17 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         private set
     var quality by mutableStateOf<QualityDto?>(null)
         private set
+    var passport by mutableStateOf<PassportDto?>(null)
+        private set
+    var darkTheme by mutableStateOf(loadSetting(THEME_SETTING)?.toBooleanStrictOrNull())
+        private set
+    var question by mutableStateOf("")
+    var answer by mutableStateOf<AnswerDto?>(null)
+        private set
+    var asking by mutableStateOf(false)
+        private set
+    var otherSourcesOpen by mutableStateOf(false)
+    private var askJob: Job? = null
     var qualityTab by mutableStateOf(QualityTab.EXTRACT)
         private set
     var overview by mutableStateOf<OverviewDto?>(null)
@@ -161,6 +191,9 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     private var valuesJob: Job? = null
     private var toastJob: Job? = null
     private var uploadSequence = 0
+    private val watched = mutableSetOf<SetRef>()
+    private val processingSeen = mutableMapOf<String, ProcessingStateDto>()
+    private var watchJob: Job? = null
     private var writtenHash: String? = null
 
     val ref: SetRef? get() = set?.ref
@@ -187,7 +220,11 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         loadScreenData()
     }
 
+    var scrollTop by mutableIntStateOf(0)
+        private set
+
     fun openScreen(target: AppScreen) = navigate {
+        if (target == screen) scrollTop++
         if (target != AppScreen.VALUES) evidence = null
         if (target != AppScreen.AREAS && set == null) defaultSet()?.let { loadSet(it.ref, null) }
         screen = target
@@ -251,6 +288,46 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
 
     fun openFullscreen(target: ViewerTarget) {
         fullscreen = target
+        if (articles[target.article] == null) request { ensureArticle(target.article) }
+    }
+
+    fun sortTable(table: String, column: Int) {
+        val current = tableSorts[table]
+        val descending = if (current?.column == column) !current.descending else column > 0
+        tableSorts = tableSorts + (table to TableSort(column, descending))
+    }
+
+    fun toggleAllMarks() {
+        allMarks = !allMarks
+    }
+
+    fun fullscreenMarks(target: ViewerTarget, page: Int): List<Mark> {
+        val own = target.marks[page].orEmpty()
+        val article = articles[target.article]
+        if (!allMarks || article == null) return own
+        val values = article.values.filter { it.page == page }.mapNotNull { value ->
+            val flagged = activeIssueCount(value) > 0
+            val item = MarkItem(
+                kind = MarkKind.VALUE,
+                title = "${profile.metricTitle(value.metric)} = ${value.fixedAmount()}",
+                detail = listOfNotNull(value.recordLabel, value.pageAndPlace()).joinToString(" · ").ifEmpty { null },
+                error = flagged,
+                evidence = Evidence.OnValue(value.publicationId, value.id),
+            )
+            value.fragment?.let { Mark(it, error = flagged, focus = false, items = listOf(item)) }
+        }
+        val issues = activeIssues(article).filter { it.page == page }.mapNotNull { issue ->
+            val item = MarkItem(MarkKind.ISSUE, profile.checkTitle(issue.check), issue.description?.take(MARK_DETAIL), true, Evidence.OnIssue(issue.publicationId, issue.id))
+            issue.fragment?.let { Mark(it, error = true, focus = false, items = listOf(item)) }
+        }
+        return (own + values + issues).groupBy { it.fragment }.map { (fragment, group) ->
+            Mark(fragment, group.any { it.error }, group.any { it.focus }, group.flatMap { it.items })
+        }
+    }
+
+    fun openMarkItem(item: MarkItem) {
+        fullscreen = null
+        openEvidence(item.evidence)
     }
 
     fun closeFullscreen() {
@@ -348,6 +425,41 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     fun selectQualityTab(tab: QualityTab) {
         qualityTab = tab
         syncHash()
+        if (tab == QualityTab.PASSPORT && passport == null) request { loadPassport() }
+    }
+
+    fun ask(text: String = question) {
+        val current = ref ?: return
+        val asked = text.trim()
+        if (asked.isEmpty()) return
+        question = asked
+        askJob?.cancel()
+        askJob = scope.launch {
+            asking = true
+            try {
+                answer = client.ask(current, set?.source, asked)
+                otherSourcesOpen = false
+                error = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error = describe(failure)
+            } finally {
+                asking = false
+            }
+        }
+    }
+
+    fun openSource(publicationId: String, page: Int?, text: String) {
+        val home = page ?: 1
+        val pageCount = set?.articles?.firstOrNull { it.id == publicationId }?.pageCount
+        val marks = page?.let { mapOf(it to listOf(Mark(text.take(MARK_LENGTH), error = false, focus = true))) }.orEmpty()
+        openFullscreen(ViewerTarget("ask-$publicationId-$home", publicationId, home, pageCount, marks))
+    }
+
+    fun downloadPassport() {
+        val current = ref ?: return
+        download(client.passportUrl(current, set?.source))
     }
 
     fun selectStrict(value: Boolean) {
@@ -376,6 +488,21 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
             val item = UploadItem(++uploadSequence, file, target)
             uploads += item
             scope.launch { upload(item) }
+        }
+    }
+
+    fun processArticle(id: String) {
+        val current = ref ?: return
+        request {
+            val status = client.processArticle(current, id)
+            if (status == null) {
+                showToast("Конвейер не принял статью")
+                return@request
+            }
+            processingSeen["${current.path}/$id"] = status.state
+            updateSummary(id) { it.copy(processing = status) }
+            articles[id]?.let { articles[id] = it.copy(processing = status) }
+            watch(current)
         }
     }
 
@@ -412,6 +539,17 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     fun copyLink(route: AppRoute = currentRoute()) {
         copyToClipboard(shareableLink(route.encode()))
         showToast("Ссылка скопирована")
+    }
+
+    fun toggleTheme(systemDark: Boolean) {
+        val next = !(darkTheme ?: systemDark)
+        darkTheme = next
+        saveSetting(THEME_SETTING, next.toString())
+    }
+
+    fun copyCommand(command: String) {
+        copyToClipboard(command)
+        showToast("Команда скопирована")
     }
 
     fun dismissError() {
@@ -526,11 +664,70 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         listQuery = ""
         score = null
         quality = null
+        passport = null
+        answer = null
         overview = null
         valueTable = null
         valueRows = emptyList()
         valueFilter = ValueFilter()
         uploadProfile = uploadProfile ?: ref.profile
+        if (loaded.articles.any { it.processing?.active == true }) watch(ref)
+    }
+
+    private fun watch(target: SetRef) {
+        watched += target
+        if (watchJob?.isActive == true) return
+        watchJob = scope.launch {
+            while (watched.isNotEmpty()) {
+                delay(PROCESSING_POLL)
+                watched.toList().forEach { polled ->
+                    try {
+                        poll(polled)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        error = describe(failure)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun poll(target: SetRef) {
+        val shown = set?.takeIf { it.ref == target }
+        val loaded = client.set(target, shown?.source)
+        val finished = loaded.articles.filter { summary ->
+            val state = summary.processing?.state ?: return@filter false
+            val key = "${target.path}/${summary.id}"
+            val before = processingSeen.put(key, state)
+            before != null && before != state && summary.processing?.active == false
+        }
+        if (set?.ref == target) {
+            set = loaded
+            if (finished.isNotEmpty()) {
+                finished.forEach {
+                    articles.remove(it.id)
+                    comparisons.remove(it.id)
+                }
+                score = null
+                quality = null
+                passport = null
+                overview = null
+                valueTable = null
+                valueRows = emptyList()
+                articleId?.takeIf { id -> finished.any { it.id == id } }?.let { ensureArticle(it) }
+                loadScreenData()
+            }
+        }
+        finished.forEach { summary ->
+            val status = summary.processing ?: return@forEach
+            showToast(
+                if (status.state == ProcessingStateDto.DONE) "«${summary.title ?: summary.id}» обработана: ${plural(summary.valueCount, Values)}"
+                else "Не удалось обработать ${summary.id}: ${status.problem.orEmpty()}",
+            )
+        }
+        if (finished.isNotEmpty()) sets = client.sets()
+        if (loaded.articles.none { it.processing?.active == true }) watched -= target
     }
 
     private suspend fun loadScreenData() {
@@ -556,6 +753,9 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
                 } finally {
                     loading = false
                 }
+                if (qualityTab == QualityTab.PASSPORT && passport == null) loadPassport()
+            } else if (current != null && qualityTab == QualityTab.PASSPORT && passport == null) {
+                loadPassport()
             }
             AppScreen.AREAS -> {
                 system = client.system()
@@ -563,6 +763,11 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
             }
             else -> Unit
         }
+    }
+
+    private suspend fun loadPassport() {
+        val current = ref ?: return
+        passport = client.passport(current, set?.source)
     }
 
     private suspend fun ensureArticle(id: String) {
@@ -666,7 +871,9 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
                 val reloaded = client.set(result.ref, set?.source)
                 set = reloaded
             }
-            showToast("«${item.file.name}» загружена")
+            result.queued.forEach { processingSeen["${result.ref.path}/$it"] = ProcessingStateDto.QUEUED }
+            if (result.queued.isNotEmpty()) watch(result.ref)
+            showToast(if (result.queued.isNotEmpty()) "«${item.file.name}» загружена и отправлена на обработку" else "«${item.file.name}» загружена")
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -714,5 +921,9 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         const val TYPING_DELAY = 300L
         const val TOAST_MILLIS = 3200L
         const val PAGE_CACHE = 48
+        const val PROCESSING_POLL = 3000L
+        const val MARK_LENGTH = 160
+        const val MARK_DETAIL = 220
+        const val THEME_SETTING = "vinity.theme.dark"
     }
 }

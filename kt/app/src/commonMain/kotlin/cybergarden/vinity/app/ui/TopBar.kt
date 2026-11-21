@@ -2,7 +2,7 @@ package cybergarden.vinity.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +14,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,11 +51,19 @@ fun TopBar(store: AppStore) {
             if (inline) MainTabs(store, Modifier)
             Spacer(Modifier.weight(1f))
             UploadChip(store)
+            ThemeSwitch(store)
             if (phone) SquareButton(Glyph.PLUS, "Загрузить PDF", store::pickArticles) else PrimaryButton("Загрузить PDF", store::pickArticles, glyph = Glyph.PLUS)
         }
         if (!inline) MainTabs(store, Modifier.fillMaxWidth().padding(horizontal = 4.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(C.divider))
     }
+}
+
+@Composable
+private fun ThemeSwitch(store: AppStore) {
+    val systemDark = isSystemInDarkTheme()
+    val dark = C.dark
+    GhostButton(if (dark) Glyph.SUN else Glyph.MOON, if (dark) "Светлая тема" else "Тёмная тема", { store.toggleTheme(systemDark) }, size = 20.dp)
 }
 
 @Composable
@@ -79,11 +86,12 @@ private fun MainTabs(store: AppStore, modifier: Modifier) {
     val tabs = listOf(
         TabSpec(AppScreen.ARTICLES, "Статьи", store.set?.articles?.size),
         TabSpec(AppScreen.VALUES, "Все значения", store.set?.let { store.totalValues }),
+        TabSpec(AppScreen.ASK, "Вопрос по статьям"),
         TabSpec(AppScreen.OVERVIEW, "Обзор"),
         TabSpec(AppScreen.QUALITY, "Качество"),
         TabSpec(AppScreen.AREAS, "Области"),
     )
-    UnderlineTabs(tabs, selected, store::openScreen, modifier.horizontalScroll(rememberScrollState()), vertical = if (LocalWidth.current == Width.WIDE || LocalWidth.current == Width.NARROW) 17.dp else 8.dp)
+    UnderlineTabs(tabs, selected, store::openScreen, modifier, vertical = if (LocalWidth.current == Width.WIDE || LocalWidth.current == Width.NARROW) 17.dp else 8.dp)
 }
 
 @Composable
@@ -107,13 +115,21 @@ private fun SetPicker(store: AppStore, modifier: Modifier) {
             GlyphIcon(Glyph.DOWN, C.fg2)
         }
         DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.surface).heightIn(max = 560.dp)) {
-            store.sets.forEach { summary ->
-                summary.choices().forEach { source ->
-                    val checked = summary.ref == current.ref && (source == null || source == current.source)
-                    SetChoice(store, summary, source, checked) {
-                        open = false
-                        store.openSet(summary.ref, source)
+            DisableSelection {
+                store.sets.forEach { summary ->
+                    summary.choices().forEach { source ->
+                        val checked = summary.ref == current.ref && (source == null || source == current.source)
+                        SetChoice(store, summary, source, checked) {
+                            open = false
+                            store.openSet(summary.ref, source)
+                        }
                     }
+                }
+                Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(C.divider))
+                AddArea {
+                    open = false
+                    store.openScreen(AppScreen.AREAS)
+                    store.pickProfile()
                 }
             }
         }
@@ -143,6 +159,25 @@ private fun SetChoice(store: AppStore, summary: SetSummaryDto, source: SourceDto
         if (store.setHasUnseen(summary.ref)) NewDot("Есть новые статьи")
         Spacer(Modifier.weight(1f))
         Text(detail, Modifier.padding(start = 16.dp), style = T.small, color = C.fg2, maxLines = 1)
+    }
+}
+
+@Composable
+private fun AddArea(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .widthIn(min = 300.dp)
+            .clip(R6)
+            .press(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GlyphIcon(Glyph.PLUS, C.primary)
+        Text("Подключить новую область", style = T.body, color = C.primary, maxLines = 1)
+        Spacer(Modifier.weight(1f))
+        Text("profile.json и rules.md", Modifier.padding(start = 16.dp), style = T.small, color = C.fg2, maxLines = 1)
     }
 }
 

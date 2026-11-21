@@ -1,6 +1,9 @@
 package cybergarden.vinity.app.ui
 
+import androidx.compose.foundation.LocalScrollbarStyle
+import androidx.compose.foundation.ScrollbarStyle
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +18,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cybergarden.vinity.app.resources.Res
 import cybergarden.vinity.app.resources.inter_regular
@@ -62,7 +66,7 @@ class Palette(
 private val Light = Palette(
     dark = false,
     bg = Color(0xFFF0F2F5), surface = Color(0xFFFFFFFF), surface2 = Color(0xFFFAFAFA), fill = Color(0x0F000000),
-    fg = Color(0xFF262626), fg2 = Color(0xFF8C8C8C), fg3 = Color(0xFFBFBFBF), divider = Color(0xFFF0F0F0), border = Color(0xFFD9D9D9),
+    fg = Color(0xFF1F2329), fg2 = Color(0xFF5F6670), fg3 = Color(0xFF9AA0A6), divider = Color(0xFFEBEDF0), border = Color(0xFFD0D4D9),
     primary = Color(0xFF1890FF), primaryHover = Color(0xFF40A9FF), primaryInk = Color(0xFF096DD9),
     primary1 = Color(0xFFE6F7FF), primary3 = Color(0xFF91D5FF),
     ok = Color(0xFF52C41A), okInk = Color(0xFF389E0D), okBg = Color(0xFFF6FFED), okBd = Color(0xFFB7EB8F),
@@ -119,8 +123,8 @@ object T {
 }
 
 @Composable
-fun VinityTheme(content: @Composable () -> Unit) {
-    val palette = if (isSystemInDarkTheme()) Dark else Light
+fun VinityTheme(dark: Boolean?, content: @Composable () -> Unit) {
+    val palette = if (dark ?: isSystemInDarkTheme()) Dark else Light
     val family = FontFamily(
         Font(Res.font.inter_regular, FontWeight.Normal),
         Font(Res.font.inter_semibold, FontWeight.Medium),
@@ -132,7 +136,15 @@ fun VinityTheme(content: @Composable () -> Unit) {
     } else {
         lightColorScheme(primary = palette.primary, background = palette.bg, surface = palette.surface, onSurface = palette.fg, onBackground = palette.fg)
     }
-    CompositionLocalProvider(LocalPalette provides palette, LocalFamily provides family) {
+    val scrollbar = ScrollbarStyle(
+        minimalHeight = 24.dp,
+        thickness = 8.dp,
+        shape = RoundedCornerShape(4.dp),
+        hoverDurationMillis = 250,
+        unhoverColor = palette.fg.copy(alpha = 0.22f),
+        hoverColor = palette.fg.copy(alpha = 0.45f),
+    )
+    CompositionLocalProvider(LocalPalette provides palette, LocalFamily provides family, LocalScrollbarStyle provides scrollbar) {
         MaterialTheme(colorScheme = scheme) {
             CompositionLocalProvider(
                 LocalMinimumInteractiveComponentSize provides Dp.Unspecified,

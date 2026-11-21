@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -17,8 +16,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +43,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.drawText
@@ -54,6 +53,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import cybergarden.vinity.api.BinDto
 import cybergarden.vinity.api.HistogramDto
 import kotlin.math.ceil
@@ -415,27 +416,23 @@ private fun ChartFrame(
 }
 
 @Composable
-private fun BoxScope.TipLayer(text: String?, anchor: Offset?) {
+private fun TipLayer(text: String?, anchor: Offset?) {
     if (text.isNullOrBlank() || anchor == null) return
     val lines = text.split('\n')
-    Layout(
-        content = {
-            Column(Modifier.shadow(6.dp, R8).clip(R8).background(C.surface).padding(horizontal = 10.dp, vertical = 8.dp)) {
+    val gap = with(LocalDensity.current) { TIP_GAP.roundToPx() }
+    Popup(popupPositionProvider = PointPosition(anchor, gap), properties = PopupProperties(focusable = false)) {
+        DisableSelection {
+            Column(Modifier.widthIn(max = TIP_WIDTH).shadow(6.dp, R8).clip(R8).background(C.surface).padding(horizontal = 10.dp, vertical = 8.dp)) {
                 lines.forEachIndexed { index, line ->
                     Text(line, style = if (index == 0) T.smallMedium else T.small, color = C.fg)
                 }
             }
-        },
-        modifier = Modifier.matchParentSize(),
-    ) { measurables, constraints ->
-        val placeable = measurables.first().measure(Constraints(maxWidth = constraints.maxWidth))
-        layout(constraints.maxWidth, constraints.maxHeight) {
-            val x = (anchor.x.roundToInt() + 12).coerceAtMost(constraints.maxWidth - placeable.width).coerceAtLeast(0)
-            val above = anchor.y.roundToInt() - placeable.height - 10
-            placeable.place(x, if (above >= 0) above else anchor.y.roundToInt() + 16)
         }
     }
 }
+
+private val TIP_GAP = 12.dp
+private val TIP_WIDTH = 360.dp
 
 private fun roundedBar(left: Float, top: Float, width: Float, height: Float, radius: Float, horizontal: Boolean): Path {
     val corner = CornerRadius(radius)
