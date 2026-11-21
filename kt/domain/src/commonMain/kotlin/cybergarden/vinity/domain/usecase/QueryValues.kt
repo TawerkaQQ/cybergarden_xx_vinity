@@ -5,7 +5,7 @@ import kotlin.math.log10
 import kotlin.math.min
 import kotlin.math.pow
 
-enum class ValueSort { ARTICLE, METRIC, VALUE, RECORD, PLACE, STATUS }
+enum class ValueSort { ARTICLE, METRIC, VALUE, RAW, RECORD, AGGREGATION, PLACE, STATUS }
 
 enum class ReviewFilter { UNCHECKED, CHECKED, NO_QUOTE }
 
@@ -62,7 +62,9 @@ class QueryValues {
             ValueSort.ARTICLE -> compareBy(NaturalOrder) { it.row.publicationId }
             ValueSort.METRIC -> compareBy { it.row[spec.metric].orEmpty().lowercase() }
             ValueSort.VALUE -> compareBy(nullsLast()) { it.row.number(spec.value) }
+            ValueSort.RAW -> compareBy(NaturalOrder) { it.row[spec.rawValue].orEmpty().lowercase() }
             ValueSort.RECORD -> compareBy { it.record?.label.orEmpty().lowercase() }
+            ValueSort.AGGREGATION -> compareBy(nullsLast()) { it.row[spec.aggregation]?.lowercase() }
             ValueSort.PLACE -> compareBy<ValueFacts, String>(NaturalOrder) { it.row.publicationId }
                 .thenBy { it.row.integer(spec.page) ?: Int.MAX_VALUE }
             ValueSort.STATUS -> compareByDescending { it.activeIssues }

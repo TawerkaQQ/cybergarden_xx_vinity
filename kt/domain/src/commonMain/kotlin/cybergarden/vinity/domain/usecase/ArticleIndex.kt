@@ -41,6 +41,8 @@ class ArticleIndex(val submission: Submission) {
             submission.rows(table).associate { record -> record.key() to describe(table, record) }
         }
 
+    val repeats: Repeats by lazy { FindRepeats()(submission) }
+
     val articleIds: Set<String> get() = publications.keys + values.keys
 
     val allValues: List<Record> get() = submission.values

@@ -1,7 +1,10 @@
 ﻿param(
     [int]$Port = 8081,
     [switch]$Desktop,
-    [switch]$NoBrowser
+    [switch]$Dev,
+    [switch]$NoBrowser,
+    [string]$ModelUrl,
+    [string]$Model
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +12,9 @@ $kt = Split-Path $PSScriptRoot -Parent
 $root = Split-Path $kt -Parent
 $logs = Join-Path $kt 'build\logs'
 $started = Get-Date
-$steps = if ($Desktop) { 4 } else { 3 }
+$pipelinePython = Join-Path $root 'pipeline\.venv\Scripts\python.exe'
+$needsPipeline = -not (Test-Path $pipelinePython)
+$steps = 3 + [int][bool]$Desktop + [int]$needsPipeline
 $step = 0
 
 function Write-Step([string]$Title) {
@@ -52,11 +57,45 @@ function Invoke-Gradle([string]$Title, [string[]]$Tasks) {
     Write-Done $since
 }
 
-function Start-Server([int]$ServerPort) {
+function Read-LocalSettings {
+    $settings = @{}
+    $file = Join-Path $kt 'local.properties'
+    if (Test-Path $file) {
+        foreach ($line in Get-Content $file -Encoding UTF8) {
+            if ($line -match '^\s*([\w.]+)\s*=\s*(.*?)\s*$') { $settings[$Matches[1]] = $Matches[2] }
+        }
+    }
+    $settings
+}
+
+function Find-Model([string]$BaseUrl) {
+    try {
+        (Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/models" -TimeoutSec 15).data[0].id
+    } catch {
+        Write-Host "      модель по адресу $BaseUrl не отвечает: $($_.Exception.Message)" -ForegroundColor Yellow
+        $null
+    }
+}
+
+function Initialize-Pipeline {
+    Write-Step 'Окружение конвейера: pipeline\.venv'
+    $since = Get-Date
+    $pipeline = Join-Path $root 'pipeline'
+    & python -m venv (Join-Path $pipeline '.venv')
+    if ($LASTEXITCODE -eq 0) { & $pipelinePython -m pip install --quiet --timeout 120 --retries 5 -r (Join-Path $pipeline 'requirements.txt') }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '      окружение не собралось: статьи будут загружаться без обработки' -ForegroundColor Yellow
+        return
+    }
+    Write-Done $since
+}
+
+function Start-Server([int]$ServerPort, [string[]]$Settings) {
     $classpath = Join-Path $kt 'server\build\install\server\lib\*'
+    $properties = ($Settings | ForEach-Object { "-D$_" }) -join ' '
     $options = @{
         FilePath = (Get-Java)
-        ArgumentList = "-Dvinity.root=`"$root`" -Dvinity.port=$ServerPort -cp `"$classpath`" cybergarden.vinity.server.ApplicationKt"
+        ArgumentList = "-Dvinity.root=`"$root`" -Dvinity.port=$ServerPort $properties -cp `"$classpath`" cybergarden.vinity.server.ApplicationKt"
         WorkingDirectory = $kt
         WindowStyle = 'Hidden'
         PassThru = $true
@@ -99,13 +138,24 @@ Write-Host 'Останавливаю прежний запуск' -ForegroundCol
 & (Join-Path $PSScriptRoot 'stop.ps1')
 New-Item -ItemType Directory -Force $logs | Out-Null
 
-Invoke-Gradle 'Веб-интерфейс: Kotlin/Wasm и сборка бандла' @(':app:wasmJsBrowserDistribution')
+if ($Dev) { Invoke-Gradle 'Веб-интерфейс: Kotlin/Wasm, отладочная сборка без оптимизации' @(':app:wasmJsBrowserDevelopmentExecutableDistribution') }
+else { Invoke-Gradle 'Веб-интерфейс: Kotlin/Wasm и сборка бандла' @(':app:wasmJsBrowserDistribution') }
 Invoke-Gradle 'Сервер' @(':server:installDist')
+if ($needsPipeline) { Initialize-Pipeline }
+
+$local = Read-LocalSettings
+$modelUrl = if ($ModelUrl) { $ModelUrl } else { $local['model.url'] }
+$modelName = if ($Model) { $Model } elseif ($local['model.name']) { $local['model.name'] } elseif ($modelUrl) { Find-Model $modelUrl }
+$serverSettings = @()
+if ($modelUrl) { $serverSettings += "vinity.model.url=`"$modelUrl`"" }
+if ($modelName) { $serverSettings += "vinity.model.name=`"$modelName`"" }
+if ($local['model.key']) { $serverSettings += "vinity.model.key=`"$($local['model.key'])`"" }
+if ($local['rag.url']) { $serverSettings += "vinity.rag.url=`"$($local['rag.url'])`"" }
 
 Write-Step 'Запуск сервера'
 $serverPort = Find-FreePort $Port
 if ($serverPort -ne $Port) { Write-Host "      порт $Port занят, беру $serverPort" -ForegroundColor Yellow }
-$server = Start-Server $serverPort
+$server = Start-Server $serverPort $serverSettings
 if (-not (Wait-Server $server $serverPort)) {
     Write-Host '      сервер не запустился, последние строки логов:' -ForegroundColor Red
     Get-Content (Join-Path $logs 'server.log'), (Join-Path $logs 'server-error.log') -Tail 30
@@ -119,5 +169,9 @@ $total = [int]((Get-Date) - $started).TotalSeconds
 Write-Host ''
 Write-Host "Готово за $total с. Сайт: $url" -ForegroundColor Green
 Write-Host "Сервер работает в фоне, PID $($server.Id), лог $logs\server.log"
+if ($modelUrl) { Write-Host "Конвейер: модель $modelName, $modelUrl" }
+else { Write-Host 'Конвейер не настроен: загруженные статьи не обрабатываются. Адрес модели — model.url в kt\local.properties или -ModelUrl' -ForegroundColor Yellow }
+if ($local['rag.url']) { Write-Host "Вопросы по статьям: модуль РАГ $($local['rag.url'])" }
+else { Write-Host 'Вопросы по статьям: поиск по статьям и модель конвейера. Модуль РАГ подключается адресом rag.url в kt\local.properties' }
 Write-Host 'Остановить: stop.cmd'
 if (-not $NoBrowser) { Start-Process $url }

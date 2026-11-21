@@ -28,6 +28,7 @@ import cybergarden.vinity.api.QuoteQualityDto
 import cybergarden.vinity.api.QuoteStatusDto
 import cybergarden.vinity.api.RecordDto
 import cybergarden.vinity.api.RecordTableDto
+import cybergarden.vinity.api.RepeatDto
 import cybergarden.vinity.api.ScoreDto
 import cybergarden.vinity.api.TableInfoDto
 import cybergarden.vinity.api.ValueDto
@@ -111,6 +112,7 @@ fun ValueFacts.toDto(spec: ValuesSpec) = ValueDto(
     issues = issues.map { it.id },
     quote = quote.toDto(),
     review = review?.toDto(),
+    repeats = repeats.map { RepeatDto(it.publicationId, it.id, it[spec.value], it[spec.unit], it.integer(spec.page), it[spec.fragment]) },
 )
 
 fun Record.toRefDto(spec: ValuesSpec) = ValueRefDto(

@@ -15,6 +15,8 @@ import cybergarden.vinity.domain.port.ReviewRepository
 import cybergarden.vinity.domain.port.SubmissionRepository
 import cybergarden.vinity.domain.port.TextNormalizer
 import cybergarden.vinity.domain.usecase.ArticleIndex
+import cybergarden.vinity.domain.usecase.Audit
+import cybergarden.vinity.domain.usecase.AuditValues
 import cybergarden.vinity.domain.usecase.NaturalOrder
 import cybergarden.vinity.domain.usecase.QuoteCheck
 import cybergarden.vinity.domain.usecase.QuoteChecker
@@ -34,7 +36,7 @@ class Library(
     private val reviews: ReviewRepository,
     private val normalizer: TextNormalizer,
 ) {
-    private class Loaded(val stamp: List<Long>, val index: ArticleIndex, val checker: () -> QuoteChecker) {
+    private class Loaded(val stamp: List<Long>, val index: ArticleIndex, val audit: Audit?, val checker: () -> QuoteChecker) {
         private val quotes = ConcurrentHashMap<String, Map<RecordKey, QuoteCheck>>()
 
         @Volatile
@@ -52,6 +54,7 @@ class Library(
     }
 
     private val loaded = ConcurrentHashMap<Path, Loaded>()
+    private val auditValues = AuditValues()
 
     fun profile(name: String): Profile = workspace.profiles.load(name)
 
@@ -64,11 +67,11 @@ class Library(
     fun known(ref: SetRef): Boolean = ref.profile in profileNames() && ref.set in workspace.sets(ref.profile)
 
     fun known(ref: SetRef, id: String): Boolean =
-        SAFE_ID.matches(id) && known(ref) && (pdf(ref, id).exists() || sources(ref).any { index(ref, it)?.publication(id) != null })
+        SAFE_ID.matches(id) && known(ref) && (pdf(ref, id).exists() || sources(ref).any { id in index(ref, it)?.articleIds.orEmpty() })
 
     fun sources(ref: SetRef): List<SourceDto> {
-        val publications = profile(ref.profile).publications.file
-        return SourceDto.entries.filter { location(ref, it).resolve(publications).exists() }
+        val profile = profile(ref.profile)
+        return SourceDto.entries.filter { hasTables(location(ref, it), profile) }
     }
 
     fun source(ref: SetRef, requested: SourceDto?): SourceDto? = requested?.takeIf { it in sources(ref) } ?: sources(ref).firstOrNull()
@@ -76,6 +79,8 @@ class Library(
     fun canCompare(ref: SetRef): Boolean = sources(ref).containsAll(SourceDto.entries)
 
     fun index(ref: SetRef, source: SourceDto?): ArticleIndex? = source?.let { load(ref, it)?.index }
+
+    fun audit(ref: SetRef, source: SourceDto?): Audit? = source?.let { load(ref, it)?.audit }
 
     fun catalog(ref: SetRef, source: SourceDto?, complete: Boolean = false): ValueCatalog? {
         val entry = source?.let { load(ref, it) } ?: return null
@@ -108,19 +113,23 @@ class Library(
     private fun load(ref: SetRef, source: SourceDto): Loaded? {
         val directory = location(ref, source)
         val profile = profile(ref.profile)
-        if (!directory.resolve(profile.publications.file).exists()) return null
+        if (!hasTables(directory, profile)) return null
         val stamp = stamp(directory)
         return loaded.compute(directory) { _, existing ->
             existing?.takeIf { it.stamp == stamp } ?: run {
-                val index = ArticleIndex(repository.load(directory.toString(), profile).submission)
+                val submission = repository.load(directory.toString(), profile).submission
+                val audit = if (source == SourceDto.RESULTS) auditValues(submission) else null
+                val index = ArticleIndex(audit?.submission ?: submission)
                 val pages = FallbackPageTextSource(
                     JsonPageTextSource(workspace.pages(ref.profile)),
                     PdfPageTextSource(inspector) { pdf(ref, it) },
                 )
-                Loaded(stamp, index) { QuoteChecker(profile, pages, normalizer) }
+                Loaded(stamp, index, audit) { QuoteChecker(profile, pages, normalizer) }
             }
         }
     }
+
+    private fun hasTables(directory: Path, profile: Profile): Boolean = profile.tables.any { directory.resolve(it.file).exists() }
 
     private fun stamp(directory: Path): List<Long> = directory.listDirectoryEntries()
         .filterNot { it.isDirectory() }

@@ -1,8 +1,10 @@
 package cybergarden.vinity.server
 
 import cybergarden.vinity.api.ApiRoutes
+import cybergarden.vinity.api.AskRequestDto
 import cybergarden.vinity.api.HighlightBox
 import cybergarden.vinity.api.IssueReviewRequestDto
+import cybergarden.vinity.api.PageRequestDto
 import cybergarden.vinity.api.ReviewFilterDto
 import cybergarden.vinity.api.SetRef
 import cybergarden.vinity.api.SourceDto
@@ -31,8 +33,10 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.utils.io.toByteArray
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-fun Route.vinityRoutes(library: LibraryService, insights: InsightService) {
+fun Route.vinityRoutes(library: LibraryService, insights: InsightService, passports: PassportService, questions: AskService) {
     get(ApiRoutes.PROFILES) {
         call.respond(library.profiles())
     }
@@ -67,6 +71,23 @@ fun Route.vinityRoutes(library: LibraryService, insights: InsightService) {
 
     get(ApiRoutes.OVERVIEW) {
         call.respondOrNotFound(insights.overview(call.parameters.setRef(), call.source()))
+    }
+
+    post(ApiRoutes.ASK) {
+        val request = call.receive<AskRequestDto>()
+        call.respondOrNotFound(withContext(Dispatchers.IO) { questions.ask(call.parameters.setRef(), call.source(), request.question) })
+    }
+
+    get(ApiRoutes.PASSPORT) {
+        val ref = call.parameters.setRef()
+        val passport = passports.passport(ref, call.source())
+        if (passport != null && call.flag(ApiRoutes.DOWNLOAD_PARAMETER)) {
+            call.response.header(
+                HttpHeaders.ContentDisposition,
+                ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "passport-${ref.profile}-${ref.set}.json").toString(),
+            )
+        }
+        call.respondOrNotFound(passport)
     }
 
     get(ApiRoutes.EXPORT) {
@@ -107,16 +128,15 @@ fun Route.vinityRoutes(library: LibraryService, insights: InsightService) {
     }
 
     get(ApiRoutes.PAGE) {
-        val page = call.parameters[ApiRoutes.PAGE_PARAMETER]?.toIntOrNull()
-        val fragments = call.request.queryParameters.getAll(ApiRoutes.FRAGMENT_PARAMETER).orEmpty()
-        val rendered = page?.let { library.page(call.parameters.setRef(), call.article(), it, fragments) }
-        if (rendered == null) {
-            call.respond(HttpStatusCode.NotFound)
-            return@get
-        }
-        val boxes = rendered.highlights.map { HighlightBox(it.index, it.top, it.bottom, it.left, it.right, it.rowLabel) }
-        if (boxes.isNotEmpty()) call.response.header(ApiRoutes.HIGHLIGHT_HEADER, HighlightBox.encode(boxes))
-        call.respondBytes(rendered.png, ContentType.Image.PNG)
+        call.respondPage(library, call.request.queryParameters.getAll(ApiRoutes.FRAGMENT_PARAMETER).orEmpty())
+    }
+
+    post(ApiRoutes.PAGE) {
+        call.respondPage(library, call.receive<PageRequestDto>().fragments)
+    }
+
+    post(ApiRoutes.PROCESS) {
+        call.respondOrNotFound(library.process(call.parameters.setRef(), call.article()))
     }
 
     post(ApiRoutes.UPLOADS) {
@@ -179,3 +199,15 @@ private fun ApplicationCall.valueQuery(): ValueQuery {
 private const val DEFAULT_LIMIT = 200
 private const val MAX_LIMIT = 1000
 private const val MAX_UPLOAD_BYTES = 200L * 1024 * 1024
+
+private suspend fun ApplicationCall.respondPage(library: LibraryService, fragments: List<String>) {
+    val page = parameters[ApiRoutes.PAGE_PARAMETER]?.toIntOrNull()
+    val rendered = page?.let { library.page(parameters.setRef(), article(), it, fragments) }
+    if (rendered == null) {
+        respond(HttpStatusCode.NotFound)
+        return
+    }
+    val boxes = rendered.highlights.map { HighlightBox(it.index, it.top, it.bottom, it.left, it.right, it.rowLabel) }
+    if (boxes.isNotEmpty()) response.header(ApiRoutes.HIGHLIGHT_HEADER, HighlightBox.encode(boxes))
+    respondBytes(rendered.png, ContentType.Image.PNG)
+}

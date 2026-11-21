@@ -3,6 +3,7 @@ package cybergarden.vinity.data.profile
 import cybergarden.vinity.domain.model.ChartLine
 import cybergarden.vinity.domain.model.ChartSpec
 import cybergarden.vinity.domain.model.CheckDisplay
+import cybergarden.vinity.domain.model.CheckRule
 import cybergarden.vinity.domain.model.DisplaySpec
 import cybergarden.vinity.domain.model.Issues
 import cybergarden.vinity.domain.model.LinkedField
@@ -17,14 +18,6 @@ import cybergarden.vinity.domain.model.UnitConversion
 import cybergarden.vinity.domain.model.UnitsSpec
 import cybergarden.vinity.domain.model.ValuesSpec
 import cybergarden.vinity.domain.port.ProfileRepository
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
@@ -34,6 +27,15 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 
 class JsonProfileRepository(private val directory: Path) : ProfileRepository {
 
@@ -83,7 +85,22 @@ class JsonProfileRepository(private val directory: Path) : ProfileRepository {
         },
         checks = checks.map { checkName(name, it) },
         display = display?.toSpec(name) ?: DisplaySpec(),
+        rules = checks.map { checkRule(name, it) },
     )
+
+    private fun checkRule(profile: String, check: JsonElement): CheckRule {
+        val name = checkName(profile, check)
+        if (check !is JsonObject) return CheckRule(name, name, emptyMap())
+        val rule = check["rule"]?.jsonPrimitive?.content ?: name
+        val params = check.filterKeys { it != "rule" && it != "name" }.mapNotNull { (key, value) ->
+            when (value) {
+                is JsonPrimitive -> key to listOf(value.content)
+                is JsonArray -> value.filterIsInstance<JsonPrimitive>().map { it.content }.takeIf { it.size == value.size }?.let { key to it }
+                else -> null
+            }
+        }.toMap()
+        return CheckRule(name, rule, params)
+    }
 
     private fun checkName(profile: String, check: JsonElement): String = when (check) {
         is JsonPrimitive -> check.content

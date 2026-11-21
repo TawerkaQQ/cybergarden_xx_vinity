@@ -7,6 +7,7 @@ enum class AppScreen(val slug: String) {
     OVERVIEW("overview"),
     QUALITY("quality"),
     AREAS("areas"),
+    ASK("ask"),
 }
 
 data class AppRoute(
@@ -65,6 +66,7 @@ data class AppRoute(
                 }
                 AppScreen.VALUES.slug -> route.copy(screen = AppScreen.VALUES)
                 AppScreen.OVERVIEW.slug -> route.copy(screen = AppScreen.OVERVIEW)
+                AppScreen.ASK.slug -> route.copy(screen = AppScreen.ASK)
                 AppScreen.QUALITY.slug -> route.copy(screen = AppScreen.QUALITY, tab = rest.getOrNull(1))
                 else -> null
             }

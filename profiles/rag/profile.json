@@ -137,7 +137,13 @@
     ]
   },
   "ranges": {},
-  "checks": ["metric_scale", "metric_k", "percent_vs_points", "duplicate_consistency", "contradiction"],
+  "checks": [
+    {"rule": "metric_scale", "fraction": [0, 1], "%": [0, 100]},
+    {"rule": "metric_k", "column": "metric_k", "metrics": ["recall", "hit", "success", "coverage"]},
+    {"rule": "percent_vs_points", "unit": "%", "by": ["dataset_id", "task_id", "metric_k"], "metrics": ["gain", "improvement", "increase", "decrease", "drop", "difference", "delta", "change", "boost"]},
+    "duplicate_consistency",
+    "contradiction"
+  ],
   "display": {
     "record": {
       "column": "config_id",

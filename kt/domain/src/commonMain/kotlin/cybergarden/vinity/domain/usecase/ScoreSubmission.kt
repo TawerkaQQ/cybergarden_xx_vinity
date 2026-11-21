@@ -86,8 +86,11 @@ class ScoreSubmission {
         )
     }
 
-    private fun scoredPublications(candidate: Submission, gold: Submission): Set<String> =
-        candidate.publications.map { it.publicationId }.toSet() intersect gold.publications.map { it.publicationId }.toSet()
+    private fun scoredPublications(candidate: Submission, gold: Submission): Set<String> {
+        val processed = candidate.publications.filterNot { it[Publications.IN_SCOPE].isNullOrBlank() }.map { it.publicationId } +
+            candidate.values.map { it.publicationId }
+        return processed.toSet() intersect gold.publications.map { it.publicationId }.toSet()
+    }
 
     private fun scoredRows(submission: Submission, publications: Set<String>): List<Record> {
         val spec = submission.profile.values
@@ -96,7 +99,7 @@ class ScoreSubmission {
 
     private fun scopeAgreement(candidate: Submission, gold: Submission, ids: Set<String>): ScopeAgreement {
         val expected = gold.publications.associate { it.publicationId to it[Publications.IN_SCOPE] }
-        val agreed = candidate.publications.count { it.publicationId in ids && it[Publications.IN_SCOPE] == expected[it.publicationId] }
-        return ScopeAgreement(agreed, ids.size)
+        val judged = candidate.publications.filter { it.publicationId in ids && it[Publications.IN_SCOPE] != null }
+        return ScopeAgreement(judged.count { it[Publications.IN_SCOPE] == expected[it.publicationId] }, judged.size)
     }
 }

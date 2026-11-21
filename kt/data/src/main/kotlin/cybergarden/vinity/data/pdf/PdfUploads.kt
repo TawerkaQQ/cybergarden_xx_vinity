@@ -50,7 +50,7 @@ class PdfUploads(private val workspace: Workspace) {
     private fun freeId(profile: String, base: String): String =
         generateSequence(1) { it + 1 }
             .map { if (it == 1) base else "$base-$it" }
-            .first { !workspace.pdf(profile, Workspace.UPLOADS, it).exists() }
+            .first { id -> (workspace.sets(profile) + Workspace.UPLOADS).none { workspace.pdf(profile, it, id).exists() } }
 
     private fun ByteArray.startsWith(prefix: ByteArray) = size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 

@@ -14,6 +14,7 @@ data class ValueFacts(
     val activeIssues: Int,
     val quote: QuoteCheck,
     val review: ValueReview?,
+    val repeats: List<Record>,
 )
 
 class ValueCatalog(
@@ -67,6 +68,7 @@ class ValueCatalog(
                 activeIssues = issues.count { !reviews.dismissed(it) },
                 quote = checks[row.key()] ?: QuoteCheck(QuoteStatus.NO_QUOTE),
                 review = reviews.value(row),
+                repeats = index.repeats.of(row),
             )
         }
     }

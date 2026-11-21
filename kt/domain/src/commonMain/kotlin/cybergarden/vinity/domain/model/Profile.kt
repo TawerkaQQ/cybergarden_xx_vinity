@@ -12,6 +12,7 @@ data class Profile(
     val ranges: Map<String, ClosedFloatingPointRange<Double>>,
     val checks: List<String>,
     val display: DisplaySpec,
+    val rules: List<CheckRule> = checks.map { CheckRule(it, it, emptyMap()) },
 ) {
     val allTables: List<TableSpec> = tables + issues
     val publications: TableSpec = table(Publications.TABLE)
@@ -40,6 +41,12 @@ data class Profile(
     fun table(name: String): TableSpec = allTables.firstOrNull { it.name == name } ?: fail("нет таблицы $name")
 
     private fun fail(message: String): Nothing = throw IllegalArgumentException("Профиль $name: $message")
+}
+
+data class CheckRule(val name: String, val rule: String, val params: Map<String, List<String>>) {
+    fun list(key: String): List<String> = params[key].orEmpty()
+
+    fun number(key: String, index: Int): Double? = params[key]?.getOrNull(index)?.toDoubleOrNull()
 }
 
 data class TableSpec(

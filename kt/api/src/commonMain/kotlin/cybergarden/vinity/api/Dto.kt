@@ -50,6 +50,7 @@ data class SetDto(
     val sources: List<SourceDto>,
     val source: SourceDto?,
     val canCompare: Boolean,
+    val pipeline: PipelineDto,
     val articles: List<ArticleSummaryDto>,
 )
 
@@ -68,6 +69,7 @@ data class ArticleSummaryDto(
     val valueCount: Int,
     val issueCount: Int,
     val reviewed: Int,
+    val processing: ProcessingDto? = null,
 )
 
 @Serializable
@@ -86,7 +88,15 @@ data class ArticleDto(
     val values: List<ValueDto>,
     val issues: List<IssueDto>,
     val records: List<RecordTableDto>,
+    val processing: ProcessingDto? = null,
+    val overlaps: List<OverlapDto> = emptyList(),
 )
+
+@Serializable
+data class OverlapDto(val publicationId: String, val values: Int)
+
+@Serializable
+data class RepeatDto(val publicationId: String, val valueId: String, val value: String?, val unit: String?, val page: Int?, val fragment: String?)
 
 @Serializable
 enum class ValueKindDto { TABLE, FIGURE, TEXT }
@@ -136,6 +146,7 @@ data class ValueDto(
     val issues: List<String>,
     val quote: QuoteDto,
     val review: ValueReviewDto?,
+    val repeats: List<RepeatDto> = emptyList(),
 )
 
 @Serializable
@@ -188,7 +199,7 @@ data class ComparisonDto(
 )
 
 @Serializable
-enum class ValueSortDto { ARTICLE, METRIC, VALUE, RECORD, PLACE, STATUS }
+enum class ValueSortDto { ARTICLE, METRIC, VALUE, RAW, RECORD, AGGREGATION, PLACE, STATUS }
 
 @Serializable
 enum class ReviewFilterDto { UNCHECKED, CHECKED, NO_QUOTE }
@@ -233,7 +244,19 @@ data class UploadDto(
     val ref: SetRef,
     val added: List<String>,
     val rejected: List<RejectedFileDto>,
+    val queued: List<String>,
 )
+
+@Serializable
+data class PipelineDto(val available: Boolean, val model: String?, val problem: String?)
+
+@Serializable
+enum class ProcessingStateDto { QUEUED, RUNNING, DONE, FAILED }
+
+@Serializable
+data class ProcessingDto(val state: ProcessingStateDto, val step: String?, val problem: String?, val seconds: Int?) {
+    val active: Boolean get() = state == ProcessingStateDto.QUEUED || state == ProcessingStateDto.RUNNING
+}
 
 @Serializable
 data class RejectedFileDto(val file: String, val reason: String)
@@ -381,3 +404,67 @@ data class DemoCaseDto(val title: String, val detail: String, val route: String)
 
 @Serializable
 data class ProfileUploadDto(val profile: ProfileDto?, val problem: String?)
+
+@Serializable
+data class PassportDto(
+    val ref: SetRef,
+    val profileTitle: String,
+    val scope: String,
+    val source: SourceDto?,
+    val generatedAt: String,
+    val sections: List<PassportSectionDto>,
+    val accuracy: List<AccuracyDto>,
+    val byCheck: List<CountDto>,
+    val overlaps: List<OverlapPairDto>,
+    val articles: List<ArticleFileDto>,
+    val outputs: List<OutputFileDto>,
+    val reproduce: List<CommandDto>,
+)
+
+@Serializable
+data class PassportSectionDto(val title: String, val facts: List<FactDto>)
+
+@Serializable
+data class FactDto(val label: String, val value: String, val hint: String? = null)
+
+@Serializable
+data class AccuracyDto(val strict: Boolean, val matchedBy: List<String>, val primaryRecords: CountsDto, val allMentions: CountsDto, val publicationsScored: Int)
+
+@Serializable
+data class OverlapPairDto(val first: String, val second: String, val values: Int)
+
+@Serializable
+data class ArticleFileDto(val id: String, val bytes: Long, val sha256: String, val promptVersion: String?, val models: List<String>)
+
+@Serializable
+data class OutputFileDto(val name: String, val bytes: Long, val sha256: String, val modified: String, val rows: Int?)
+
+@Serializable
+data class CommandDto(val title: String, val command: String)
+
+@Serializable
+data class AskRequestDto(val question: String)
+
+@Serializable
+data class PageRequestDto(val fragments: List<String>)
+
+@Serializable
+data class AnswerDto(
+    val question: String,
+    val answer: String?,
+    val engine: String,
+    val sources: List<AnswerSourceDto>,
+    val problem: String?,
+)
+
+@Serializable
+data class AnswerSourceDto(
+    val number: Int,
+    val publicationId: String?,
+    val page: Int?,
+    val text: String,
+    val reference: String?,
+    val url: String?,
+    val valueId: String?,
+    val cited: Boolean,
+)
