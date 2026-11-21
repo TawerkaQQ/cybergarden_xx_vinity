@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pipeline.domain.profile import Profile
 
 SQUASHED = re.compile(r"[\s*·⋅]+")
+LETTERS = re.compile(r"[A-Za-z]+")
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,12 @@ class UnitBook:
         factor = self._factors.get((source, target))
         if factor is not None:
             return Converted(value * factor, target, True)
-        if squash(source) in self._canonical:
-            return Converted(None, "", False)
-        return Converted(value, target, False)
+        target_letters = leading_letters(target)
+        if squash(source) not in self._canonical and target_letters and leading_letters(source).startswith(target_letters):
+            return Converted(value, target, False)
+        return Converted(None, "", False)
+
+
+def leading_letters(unit: str) -> str:
+    match = LETTERS.match(squash(unit))
+    return match.group() if match else ""
