@@ -1,9 +1,7 @@
 import argparse
-import sqlite3
 import sys
 
 from approved_web import save_passages
-from config import CSV_INDEX_PATH, INDEX_PATH
 from generation import csv_search_phrases, generate, generate_web, search_terms
 from retrieval import search, search_csv
 from web_search import find_web_passages
@@ -21,10 +19,6 @@ def main():
         parser.error("Введите вопрос")
 
     try:
-        index = CSV_INDEX_PATH if args.csv else INDEX_PATH
-        if not index.is_file():
-            command = "rag/index.py --csv" if args.csv else "rag/index.py"
-            raise ValueError(f"Сначала создайте индекс командой {command}")
         if args.top_k is not None and args.top_k < 1:
             raise ValueError("--top-k должен быть положительным числом")
         if args.csv:
@@ -33,7 +27,7 @@ def main():
         else:
             keywords = search_terms(query)
             phrases = keywords.splitlines()
-            results = search(f"{keywords} {query}", args.top_k)
+            results = search(query, args.top_k, terms=keywords)
 
         print("1. Ответ из локальной базы")
         for number, result in enumerate(results, start=1):
@@ -42,7 +36,7 @@ def main():
         print(generate(query, results, csv_corpus=args.csv), flush=True)
         if not args.local_only:
             show_web_answer(query, phrases)
-    except (OSError, ValueError, sqlite3.Error) as error:
+    except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 
 

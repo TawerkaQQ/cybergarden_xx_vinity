@@ -55,7 +55,7 @@ WEB_CITATION = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 def search_terms(query: str) -> str:
     return complete(
         "Generate up to eight English search terms or short phrases for the user's question "
-        "so that a keyword search can find relevant scientific papers. Output keywords only. "
+        "to help find relevant passages in scientific papers. Output search terms only. "
         "Preserve significant acronyms, model names and method names.",
         query,
         max_tokens=128,

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -22,9 +23,7 @@ def data_directory() -> Path:
 
 
 DATA_DIR = data_directory()
-INDEX_PATH = MODULE_DIR / ".index.sqlite3"
-CSV_INDEX_PATH = INDEX_PATH.with_name(".csv-index.sqlite3")
-APPROVED_WEB_PATH = INDEX_PATH.with_name(".approved-web.sqlite3")
+QDRANT_DIR = MODULE_DIR / ".qdrant"
 
 
 @dataclass(frozen=True, repr=False)
@@ -84,3 +83,18 @@ def configured_profile_prefix() -> str | None:
 
 def get_top_k(default: int = 3) -> int:
     return int(os.getenv("TOP_K", str(default)))
+
+
+def get_qdrant_url() -> str:
+    url = os.getenv("QDRANT_URL", "http://127.0.0.1:6333").strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.query or parsed.fragment:
+        raise ValueError("Укажите HTTP-адрес Qdrant в QDRANT_URL")
+    return url
+
+
+def collection_name(kind: str) -> str:
+    prefix = os.getenv("QDRANT_COLLECTION_PREFIX", "rag").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", prefix):
+        raise ValueError("QDRANT_COLLECTION_PREFIX должен содержать буквы, цифры, дефисы или подчёркивания")
+    return f"{prefix}_{kind}"

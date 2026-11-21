@@ -1,46 +1,51 @@
-import hashlib
-import sqlite3
-from contextlib import closing
 from datetime import UTC, datetime
+from uuid import NAMESPACE_URL, uuid5
 
-import config
-from evidence import WebPassage
+from qdrant_client import models
+from qdrant_client.http.exceptions import UnexpectedResponse
+
+from config import collection_name
+from evidence import WebPassage, publication_ids
+from vector_store import check_collection, create_collection, database
+from vectors import passage_vectors
 
 
 def save_passages(question: str, passages: list[WebPassage]) -> int:
     if not passages:
         return 0
 
+    name = collection_name("approved")
     approved_at = datetime.now(UTC).isoformat(timespec="seconds")
-    inserted = 0
-    with closing(sqlite3.connect(config.APPROVED_WEB_PATH)) as database, database:
-        database.execute("BEGIN IMMEDIATE")
-        database.execute(
-            """CREATE TABLE IF NOT EXISTS approved_sources (
-                id INTEGER PRIMARY KEY,
-                signature TEXT NOT NULL UNIQUE,
-                url TEXT NOT NULL,
-                title TEXT NOT NULL,
-                passage TEXT NOT NULL,
-                fetched_at TEXT NOT NULL,
-                approved_at TEXT NOT NULL
-            )"""
-        )
-        database.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS fragments USING fts5(source UNINDEXED, page UNINDEXED, text, keywords)"
-        )
-        for passage in passages:
-            signature = hashlib.sha256(f"{passage.url}\n{passage.text}".encode()).hexdigest()
-            row = database.execute(
-                """INSERT INTO approved_sources (signature, url, title, passage, fetched_at, approved_at)
-                   VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(signature) DO NOTHING RETURNING id""",
-                (signature, passage.url, passage.title, passage.text, passage.fetched_at, approved_at),
-            ).fetchone()
-            if row is None:
-                continue
-            database.execute(
-                "INSERT INTO fragments (rowid, source, page, text, keywords) VALUES (?, ?, NULL, ?, ?)",
-                (row[0], f"Одобренный веб-источник. {passage.reference}", passage.text, f"{passage.title} {question}"),
+    by_id = {str(uuid5(NAMESPACE_URL, f"{item.url}\n{item.text}")): item for item in passages}
+    with database() as client:
+        if not client.collection_exists(name):
+            try:
+                create_collection(client, name)
+            except UnexpectedResponse:
+                if not client.collection_exists(name):
+                    raise
+        check_collection(client, name)
+        saved = client.retrieve(name, list(by_id), with_payload=False)
+        existing = {str(item.id) for item in saved}
+        pending = [(key, item) for key, item in by_id.items() if key not in existing]
+        if not pending:
+            return 0
+        texts = (f"{item.title} {item.text} {question}" for _, item in pending)
+        points = [
+            models.PointStruct(
+                id=key,
+                vector=vector,
+                payload={
+                    "source": f"Одобренный веб-источник. {item.reference}",
+                    "text": item.text,
+                    "publication_id": publication_ids(question),
+                    "url": item.url,
+                    "title": item.title,
+                    "fetched_at": item.fetched_at,
+                    "approved_at": approved_at,
+                },
             )
-            inserted += 1
-    return inserted
+            for (key, item), vector in zip(pending, passage_vectors(texts), strict=True)
+        ]
+        client.upsert(name, points, wait=True, update_mode=models.UpdateMode.INSERT_ONLY)
+    return len(pending)

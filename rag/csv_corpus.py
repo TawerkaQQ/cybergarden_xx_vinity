@@ -15,12 +15,18 @@ RESULT_LINKS = {
 }
 SEARCH_FIELDS = {
     "publications": ("title", "authors", "year", "DOI"),
-    "configurations": ("rag_variant", "retrieval_method", "generator_model", "retriever_model", "embedding_model"),
+    "configurations": ("rag_variant", "generator_model", "retriever_model", "embedding_model", "retrieval_method"),
     "datasets": ("dataset_name", "data_split", "language"),
     "tasks": ("task_type",),
-    "experiments": (),
-    "results": ("metric_name", "metric_variant", "metric_value", "source_table", "source_figure"),
+    "experiments": ("evaluation_protocol", "hardware"),
+    "results": ("metric_name", "metric_variant", "source_table", "source_figure"),
     "issues": ("check_name",),
+}
+CONFIGURATION_SEARCH_FIELDS = ("chunking_method", "chunk_size", "chunk_overlap", "chunk_unit", "top_k", "index_type")
+LABEL_FIELDS = {
+    "configurations": ("rag_variant", "generator_model", "retriever_model", "embedding_model"),
+    "datasets": ("dataset_name",),
+    "results": ("metric_name", "metric_variant", "metric_k"),
 }
 
 type Row = dict[str, str]
@@ -72,19 +78,32 @@ def read_schema() -> dict:
 def row_fragment(table: str, publication: str, identifier: str, row: Row, linked: dict[str, Row]) -> Fragment:
     location = publication if table == "publications" else f"{publication}/{identifier}"
     reference = f"{table}.csv ({location})"
-    if locator := row.get("source_table") or row.get("source_figure"):
+    locator = row.get("source_table") or row.get("source_figure") or ""
+    if locator:
         reference = f"{reference}, {locator}"
     parts = [format_fields(table, row)]
     for name, fields in linked.items():
         if name != table:
             parts.append(format_fields(name, {key: value for key, value in fields.items() if key != "note"}))
-    tags = [publication, identifier, table]
-    tags.extend(row[field] for field in SEARCH_FIELDS[table])
-    for name, fields in linked.items():
-        if name not in {table, "publications"}:
-            tags.extend(fields[field] for field in SEARCH_FIELDS[name])
+    tags = [table, *search_values(table, row)]
+    if table == "configurations":
+        tags.extend(f"{field.replace('_', ' ')} {row[field]}" for field in CONFIGURATION_SEARCH_FIELDS if row[field])
+    for name in ("configurations", "datasets", "tasks", "experiments"):
+        if name in linked and name != table:
+            tags.extend(search_values(name, linked[name]))
     page = int(row["source_page"]) if row.get("source_page") else None
-    return Fragment(reference, page, "\n\n".join(parts), " ".join(filter(None, tags)))
+    labels = tuple(
+        (field, value)
+        for name, fields in LABEL_FIELDS.items()
+        if (record := row if name == table else linked.get(name))
+        for field in fields
+        if (value := record[field])
+    )
+    return Fragment(reference, page, "\n\n".join(parts), " ".join(tags), publication, identifier, locator, labels)
+
+
+def search_values(table: str, row: Row) -> Iterator[str]:
+    return (" ".join(row[field].split())[:180] for field in SEARCH_FIELDS[table] if row[field])
 
 
 def format_fields(table: str, row: Row) -> str:
