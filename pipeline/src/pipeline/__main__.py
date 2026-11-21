@@ -53,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     extract.add_argument("--thinking", action="store_true")
     extract.add_argument("--workers", type=int, default=4)
     extract.add_argument("--attempts", type=int, default=3)
+    extract.add_argument("--runs", type=int, default=1, help="сколько раз извлекать значения; остаются найденные большинством")
     extract.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     return parser.parse_args()
 
@@ -75,10 +76,14 @@ def run_extract(args: argparse.Namespace) -> int:
     client = openai.OpenAI(base_url=args.base_url, timeout=REQUEST_TIMEOUT_SECONDS, max_retries=5)
     model = OpenAiCompatibleModel(client, args.model, args.max_tokens, args.thinking, args.attempts)
     cache_key = f"{prompts.version}-{slug(args.model)}{'-thinking' if args.thinking else ''}"
-    cached = CachedExtractionModel(ProfileExtraction(model, shape, prompts), args.cache, cache_key)
+    extraction = ProfileExtraction(model, shape, prompts)
+    runs = [
+        CachedExtractionModel(extraction, args.cache, cache_key if run == 1 else f"{cache_key}-run{run}")
+        for run in range(1, args.runs + 1)
+    ]
     store = JsonExtractStore(args.work / args.profile / "extract")
-    extract = ExtractArticle(PypdfArticleReader(), cached, shape, prompts.version, store)
-    print(f"профиль {args.profile}, версия промпта {prompts.version}, модель {args.model}")
+    extract = ExtractArticle(PypdfArticleReader(), runs, shape, prompts.version, store)
+    print(f"профиль {args.profile}, версия промпта {prompts.version}, модель {args.model}, запусков {args.runs}")
     outcomes = ProcessFolder(extract, args.workers)(selected_pdfs(args), report_outcome)
     failed = [outcome.pdf.stem for outcome in outcomes if outcome.error]
     print(f"готово: {len(outcomes) - len(failed)}, ошибок: {len(failed)} {' '.join(failed)}".rstrip())
