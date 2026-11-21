@@ -40,11 +40,48 @@ class Assembler:
             if not extract["publication"].get(IN_SCOPE):
                 continue
             ids = self._record_ids(extract)
-            for shape in self._shape.records:
-                assembled.tables[shape.table.name] += self._records(publication_id, shape, extract, ids)
+            records = {shape.table.name: self._records(publication_id, shape, extract, ids) for shape in self._shape.records}
+            for table, rows in records.items():
+                assembled.tables[table] += rows
             locator = QuoteLocator(pages.get(publication_id, {}))
-            assembled.tables[self._profile.values.table] += self._values(publication_id, extract, ids, locator, assembled.report)
+            values = self._values(publication_id, extract, ids, locator, assembled.report)
+            self._infer_references(values, records, assembled.report)
+            assembled.tables[self._profile.values.table] += values
         return assembled
+
+    def _infer_references(
+        self, values: list[dict[str, str]], records: dict[str, list[dict[str, str]]], report: Counter
+    ) -> None:
+        cited_column = self._profile.values.column("cited")
+        for row in values:
+            if row.get(cited_column):
+                continue
+            for column, target in self._shape.mention.refs.items():
+                if row[column]:
+                    continue
+                candidates = self._reference_candidates(row, target, records)
+                if len(candidates) == 1:
+                    row[column] = candidates.pop()
+                    report[f"ссылка выведена: {column}"] += 1
+
+    def _reference_candidates(self, row: dict[str, str], target: str, records: dict[str, list[dict[str, str]]]) -> set[str]:
+        target_id = self._profile.table(target).id
+        if len(records[target]) == 1:
+            return {records[target][0][target_id]}
+        candidates: set[str] = set()
+        for column, linked in self._shape.mention.refs.items():
+            if not row[column] or linked == target:
+                continue
+            linked_table = self._profile.table(linked)
+            linked_row = next((record for record in records[linked] if record[linked_table.id] == row[column]), None)
+            for reference, referenced in linked_table.references.items():
+                if referenced == target and linked_row and linked_row.get(reference):
+                    candidates |= set(linked_row[reference].split(LIST_SEPARATOR))
+            for target_row in records[target]:
+                for reference, referenced in self._profile.table(target).references.items():
+                    if referenced == linked and row[column] in target_row.get(reference, "").split(LIST_SEPARATOR):
+                        candidates.add(target_row[target_id])
+        return candidates
 
     def _publication(self, publication_id: str, extract: dict[str, Any] | None) -> dict[str, str]:
         table = self._profile.publications
