@@ -169,6 +169,7 @@
       {"from": "mV", "to": "V", "factor": 0.001},
       {"from": "fraction", "to": "%", "factor": 100},
       {"from": "A/m2", "to": "mA/cm2", "factor": 0.1},
+      {"from": "W/m2", "to": "mW/cm2", "factor": 0.1},
       {"from": "kOhm*cm2", "to": "Ohm*cm2", "factor": 1000},
       {"from": "um", "to": "nm", "factor": 1000},
       {"from": "angstrom", "to": "nm", "factor": 0.1},
@@ -181,5 +182,14 @@
     "PCE": [0, 35], "stabilized_PCE": [0, 35], "Voc": [0.05, 1.6], "Jsc": [0.1, 50], "Jsc_EQE": [0.1, 50],
     "FF": [20, 90], "HI": [-50, 100], "Rs": [0, 1000], "Rsh": [1, 10000000], "retained_PCE": [0, 120], "T80": [0, 100000]
   },
-  "checks": ["jv_consistency", "voc_limit", "range", "eqe_consistency", "champion_vs_mean", "hysteresis_index", "contradiction"]
+  "checks": [
+    {"rule": "range", "unless": {"table": "devices", "via": "device_id", "column": "device_type", "values": ["minimodule", "module"]}},
+    "contradiction",
+    {"rule": "product", "name": "jv_consistency", "target": "PCE", "factors": ["Voc", "Jsc", "FF"], "tolerance": 0.03,
+     "divisor": {"table": "measurements", "via": "measurement_id", "value": "light_intensity", "unit": "intensity_unit", "target_unit": "mW/cm2", "default": 100}},
+    {"rule": "agreement", "name": "eqe_consistency", "metrics": ["Jsc", "Jsc_EQE"], "by": ["device_id"], "tolerance": 0.05},
+    {"rule": "order", "name": "champion_vs_mean", "metrics": ["PCE", "stabilized_PCE"], "lower": "mean", "upper": "champion"},
+    "voc_limit",
+    "hysteresis_index"
+  ]
 }
