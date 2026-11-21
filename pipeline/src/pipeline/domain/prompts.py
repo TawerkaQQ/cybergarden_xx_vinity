@@ -165,7 +165,8 @@ class PromptBook:
             lines.append("refs:")
             for column, target in refs.items():
                 many = ", список key" if column in table.lists else ""
-                lines.append(f"- {column} → {target}{many}")
+                hint = f" — {table.descriptions[column]}" if column in table.descriptions else ""
+                lines.append(f"- {column} → {target}{many}{hint}")
         return "\n".join(lines)
 
     def _choices(self, key: str) -> str:
