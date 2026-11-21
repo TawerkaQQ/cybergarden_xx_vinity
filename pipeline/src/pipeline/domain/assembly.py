@@ -183,10 +183,13 @@ class Assembler:
         values = self._profile.values
         quote = (mention.get("quote") or "").strip()
         if self._is_table_label(quote, mention):
-            report["цитата: строка таблицы"] += 1
-            row_label = quote.split(ROW_LABEL_MARK, 1)[1] if ROW_LABEL_MARK in quote else ""
+            row_label = quote.split(ROW_LABEL_MARK, 1)[1].strip() if ROW_LABEL_MARK in quote else ""
             page = locator.table_page(mention["table"], row_label, mention.get("page"), mention.get("raw_value"))
             row[values.column("page")] = str(page) if page else ""
+            fragment = locator.row_fragment(page, row_label, mention.get("raw_value"))
+            if fragment:
+                row[values.column("fragment")] = fragment
+            report["цитата: строка таблицы дословно" if fragment else "цитата: подпись строки таблицы"] += 1
             return
         located = locator.locate(quote, mention.get("page"), mention.get("raw_value"))
         if located is None:
@@ -260,3 +263,9 @@ def reference(value: Any, ids: dict[str, str]) -> str:
 def add_note(row: dict[str, str], text: str) -> None:
     if NOTE in row:
         row[NOTE] = f"{row[NOTE]}; {text}" if row[NOTE] else text
+
+
+def highlight_text(fragment: str) -> str:
+    if fragment.lower().startswith(TABLE_QUOTE_PREFIXES) and ROW_LABEL_MARK in fragment:
+        return fragment.split(ROW_LABEL_MARK, 1)[1].strip()
+    return fragment

@@ -86,6 +86,19 @@ class QuoteLocator:
             return page
         return min(candidates, key=lambda number: abs(number - (page or number)))
 
+    def row_fragment(self, page: int | None, row_label: str, raw_value: str | None) -> str | None:
+        if page not in self._pages or not row_label.strip() or not raw_value or not raw_value.strip():
+            return None
+        label = re.compile(rf"(?<!\w){re.escape(collapse(row_label))}(?!\w)", re.IGNORECASE)
+        value = re.compile(rf"(?<![\d.]){re.escape(raw_value.strip())}(?!\d)")
+        for line in map(collapse, self._pages[page].text.splitlines()):
+            label_match, value_match = label.search(line), value.search(line)
+            if label_match and value_match:
+                start = min(label_match.start(), value_match.start())
+                end = max(label_match.end(), value_match.end())
+                return line[start:end]
+        return None
+
     def _pages_with_row(self, row_label: str, raw_value: str | None) -> list[int]:
         if not row_label.strip() or not raw_value or not raw_value.strip():
             return []
