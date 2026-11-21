@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import cybergarden.vinity.api.ReviewFilterDto
 import cybergarden.vinity.api.ValueDto
@@ -110,7 +115,6 @@ fun ValuesScreen(store: AppStore) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Filters(store: AppStore) {
     val filter = store.valueFilter
@@ -118,47 +122,53 @@ private fun Filters(store: AppStore) {
     val single = filter.metrics.size == 1
     var allMetrics by remember { mutableStateOf(false) }
     Block {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilterRow("Поиск") {
-                InputBox(filter.query, { store.updateFilter(filter.copy(query = it), typed = true) }, "Статья, запись, число или текст цитаты", Modifier.widthIn(min = 260.dp, max = 440.dp))
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(FILTER_GAP)) {
+            FilterRow("Поиск", INPUT_LINE) {
+                FilterCell { InputBox(filter.query, { store.updateFilter(filter.copy(query = it), typed = true) }, "Статья, запись, число или текст цитаты", Modifier.widthIn(min = 260.dp, max = 440.dp)) }
             }
             val metrics = table?.metrics.orEmpty()
             if (metrics.isNotEmpty()) {
-                FilterRow("Показатель") {
+                FilterRow("Показатель", CHIP_LINE) {
                     val shown = if (allMetrics) metrics else metrics.take(METRIC_CHIPS)
                     (shown.map { it.name } + filter.metrics.filter { selected -> shown.none { it.name == selected } }).forEach { metric ->
-                        Chip(metric, metric in filter.metrics, { store.updateFilter(filter.copy(metrics = filter.metrics.toggle(metric))) }, hint = store.profile.metricTitle(metric).takeIf { it != metric })
+                        FilterCell { Chip(metric, metric in filter.metrics, { store.updateFilter(filter.copy(metrics = filter.metrics.toggle(metric))) }, hint = store.profile.metricTitle(metric).takeIf { it != metric }) }
                     }
-                    if (metrics.size > METRIC_CHIPS) LinkButton(if (allMetrics) "Свернуть" else "Все показатели (${metrics.size})", { allMetrics = !allMetrics }, small = true)
+                    if (metrics.size > METRIC_CHIPS) FilterCell { LinkButton(if (allMetrics) "Свернуть" else "Все показатели (${metrics.size})", { allMetrics = !allMetrics }, small = true) }
                 }
             }
-            FilterRow("Откуда") {
+            FilterRow("Откуда", CHIP_LINE) {
                 ValueKindDto.entries.forEach { kind ->
-                    Chip(kind.title(), kind in filter.kinds, { store.updateFilter(filter.copy(kinds = filter.kinds.toggle(kind))) })
+                    FilterCell { Chip(kind.title(), kind in filter.kinds, { store.updateFilter(filter.copy(kinds = filter.kinds.toggle(kind))) }) }
                 }
             }
-            FilterRow("Проверка") {
+            FilterRow("Проверка", CHIP_LINE) {
                 listOf(ReviewFilterDto.UNCHECKED to "Не проверено", ReviewFilterDto.CHECKED to "Проверено референтом", ReviewFilterDto.NO_QUOTE to "Цитата не найдена").forEach { (key, label) ->
-                    Chip(label, key in filter.review, { store.updateFilter(filter.copy(review = filter.review.toggle(key))) })
+                    FilterCell { Chip(label, key in filter.review, { store.updateFilter(filter.copy(review = filter.review.toggle(key))) }) }
                 }
             }
-            FilterRow("Диапазон") {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    InputBox(filter.min, { store.updateFilter(filter.copy(min = it.trim()), typed = true) }, "от", Modifier.width(96.dp), glyph = null, enabled = single, numeric = true)
-                    Text("—", style = T.body)
-                    InputBox(filter.max, { store.updateFilter(filter.copy(max = it.trim()), typed = true) }, "до", Modifier.width(96.dp), glyph = null, enabled = single, numeric = true)
+            FilterRow("Диапазон", INPUT_LINE) {
+                FilterCell {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        InputBox(filter.min, { store.updateFilter(filter.copy(min = it.trim()), typed = true) }, "от", Modifier.width(96.dp), glyph = null, enabled = single, numeric = true)
+                        Text("—", style = T.body, color = C.fg2)
+                        InputBox(filter.max, { store.updateFilter(filter.copy(max = it.trim()), typed = true) }, "до", Modifier.width(96.dp), glyph = null, enabled = single, numeric = true)
+                    }
                 }
                 val unit = table?.histogram?.unit
-                Text(
-                    if (single) unitText(unit).ifEmpty { "без единицы" } else "Выберите один показатель: появятся диапазон и распределение.",
-                    style = T.small,
-                    color = C.fg2,
-                )
+                FilterCell {
+                    Text(
+                        if (single) unitText(unit).ifEmpty { "без единицы" } else "Выберите один показатель: появятся диапазон и распределение.",
+                        style = T.small,
+                        color = C.fg2,
+                    )
+                }
             }
-            FilterRow("Показывать") {
-                Toggle("Только с замечаниями", filter.onlyIssues, { store.updateFilter(filter.copy(onlyIssues = it)) })
-                Toggle("Без повторов", filter.hideDuplicates, { store.updateFilter(filter.copy(hideDuplicates = it)) })
-                if (filter != ValueFilter(sort = filter.sort, descending = filter.descending)) LinkButton("Сбросить фильтры", store::resetFilter)
+            FilterRow("Показывать", TOGGLE_LINE) {
+                FilterCell { Toggle("Только с замечаниями", filter.onlyIssues, { store.updateFilter(filter.copy(onlyIssues = it)) }) }
+                FilterCell { Toggle("Без повторов", filter.hideDuplicates, { store.updateFilter(filter.copy(hideDuplicates = it)) }) }
+            }
+            if (filter != ValueFilter(sort = filter.sort, descending = filter.descending)) {
+                FilterRow("", CHIP_LINE) { FilterCell { LinkButton("Сбросить фильтры", store::resetFilter, glyph = Glyph.CLOSE) } }
             }
         }
     }
@@ -166,19 +176,42 @@ private fun Filters(store: AppStore) {
 
 private fun <T> Set<T>.toggle(item: T): Set<T> = if (item in this) this - item else this + item
 
+private val LocalFilterLine = compositionLocalOf { CHIP_LINE }
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterRow(label: String, content: @Composable () -> Unit) {
+private fun FilterRow(label: String, line: Dp, content: @Composable () -> Unit) {
     val phone = LocalWidth.current == Width.PHONE
-    FlowRow(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(label, Modifier.then(if (phone) Modifier.fillMaxWidth() else Modifier.width(92.dp)), style = T.body, color = C.fg2)
-        content()
+    val controls: @Composable () -> Unit = {
+        CompositionLocalProvider(LocalFilterLine provides line) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+        }
+    }
+    if (phone) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (label.isNotEmpty()) Text(label, style = T.body, color = C.fg2)
+            controls()
+        }
+        return
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.width(FILTER_LABEL).height(line), contentAlignment = Alignment.CenterStart) {
+            Text(label, style = T.body, color = C.fg2)
+        }
+        Box(Modifier.weight(1f)) { controls() }
     }
 }
+
+@Composable
+private fun FilterCell(content: @Composable () -> Unit) {
+    Box(Modifier.heightIn(min = LocalFilterLine.current), contentAlignment = Alignment.CenterStart) { content() }
+}
+
+private val FILTER_LABEL = 92.dp
+private val FILTER_GAP = 10.dp
+private val CHIP_LINE = 26.dp
+private val TOGGLE_LINE = 28.dp
+private val INPUT_LINE = 32.dp
 
 private class TableColumn(val sort: ValueSortDto?, val title: String, val weight: Float, val end: Boolean = false)
 

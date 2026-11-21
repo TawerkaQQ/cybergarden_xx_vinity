@@ -87,7 +87,11 @@ class PassportService(
         val catalog = library.catalog(ref, SourceDto.RESULTS, complete = true) ?: return null
         val extra = ids.flatMap { id -> service.comparison(ref, id, strict = false)?.extra.orEmpty().map { RecordKey(id, it) } }
         val quoted = extra.count { catalog.get(it)?.quote?.found == true }
-        return FactDto("Сверх эталона с дословной цитатой", "$quoted из ${extra.size} лишних", "значений нет у экспертов, но цитата найдена на странице: кандидаты в пропуски эталона")
+        return FactDto(
+            "Нашли сверх эталона",
+            if (extra.isEmpty()) "нет" else "${extra.size}, из них с цитатой $quoted",
+            "Значения, которых нет у экспертов. Если число дословно стоит на странице, это скорее пропуск в эталоне, чем ошибка системы.",
+        )
     }
 
     private fun accuracy(ref: SetRef): List<AccuracyDto> = listOf(false, true).mapNotNull { strict ->
@@ -97,11 +101,17 @@ class PassportService(
     private fun dataset(inputs: Inputs, articles: Int) = PassportSectionDto(
         "Набор",
         listOfNotNull(
-            FactDto("Область", inputs.profile.title, inputs.profile.scope),
+            FactDto("Область", inputs.profile.title, inputs.profile.scope.ifBlank { null }),
             FactDto("Набор", inputs.ref.set),
-            FactDto("Источник значений", inputs.source?.let(::sourceTitle) ?: "значений нет", "результат системы или эталон экспертов"),
+            FactDto("Источник значений", inputs.source?.let(::sourceTitle) ?: "значений нет"),
             FactDto("Статей", articles.toString()),
-            inputs.files.profile?.let { FactDto("Профиль области", "${inputs.profile.name} · sha256 ${it.sha256.take(SHORT_HASH)}", "все предметные правила взяты из profile.json") },
+            inputs.files.profile?.let {
+                FactDto(
+                    "Профиль области",
+                    "${inputs.profile.name}, версия ${it.sha256.take(SHORT_HASH)}",
+                    "Короткий хэш файла profile.json. По нему видно, по каким правилам собран набор: другой хэш — другие правила.",
+                )
+            },
         ),
     )
 
@@ -109,17 +119,24 @@ class PassportService(
         val index = inputs.index
         val publications = ids.mapNotNull { index?.publication(it) }
         val processed = ids.count { id -> index?.publication(id)?.get(Publications.IN_SCOPE) != null || index?.values(id)?.isNotEmpty() == true }
-        val tables = inputs.profile.tables.filter { it.name != inputs.profile.values.table }.mapNotNull { table ->
-            index?.submission?.rows(table)?.size?.takeIf { it > 0 }?.let { FactDto("Записей в «${table.name}»", it.toString()) }
+        val tables = inputs.profile.tables.filter { it.name != inputs.profile.values.table && it.name != Publications.TABLE }.mapNotNull { table ->
+            index?.submission?.rows(table)?.size?.takeIf { it > 0 }?.let { FactDto("Записей в таблице ${table.name}", it.toString()) }
         }
         return PassportSectionDto(
-            "Состав",
+            "Состав набора",
             listOf(
-                FactDto("Обработано статей", "$processed из ${ids.size}"),
-                FactDto("В области", publications.count { it[Publications.IN_SCOPE] == TRUE }.toString()),
-                FactDto("Вне области", publications.count { it[Publications.IN_SCOPE] == FALSE }.toString()),
+                FactDto("Обработано статей", "$processed из ${ids.size}", "Статьи, по которым есть результат: определена область или найдены значения."),
+                FactDto(
+                    "В области / вне области",
+                    "${publications.count { it[Publications.IN_SCOPE] == TRUE }} / ${publications.count { it[Publications.IN_SCOPE] == FALSE }}",
+                    "Статьи вне области — не по теме профиля, значения из них не извлекаются.",
+                ),
                 FactDto("Страниц PDF", inputs.documents.sumOf { it.pageCount }.toString()),
-                FactDto("Сканов без текстового слоя", inputs.documents.count { it.pagesWithoutText.isNotEmpty() }.toString(), "текст таких страниц распознаётся"),
+                FactDto(
+                    "Сканов",
+                    inputs.documents.count { it.pagesWithoutText.isNotEmpty() }.toString(),
+                    "PDF без текстового слоя. Текст таких страниц распознаётся, и цитаты ищутся в распознанном тексте.",
+                ),
             ) + tables,
         )
     }
@@ -130,20 +147,46 @@ class PassportService(
         val rows = index?.allValues.orEmpty()
         val quotes = inputs.quality?.quotes
         val normalization = inputs.quality?.normalization
+        val kinds = listOf(ValueKind.TABLE to "таблицы", ValueKind.TEXT to "текст", ValueKind.FIGURE to "рисунки")
         return PassportSectionDto(
             "Значения",
             listOfNotNull(
-                FactDto("Всего упоминаний", rows.size.toString()),
-                FactDto("Основных значений", rows.count { it[spec.duplicateOf] == null }.toString(), "без повторов одного числа в разных местах статьи"),
-                FactDto("Повторов", rows.count { it[spec.duplicateOf] != null }.toString()),
-                FactDto("Из таблиц / текста / рисунков", listOf(ValueKind.TABLE, ValueKind.TEXT, ValueKind.FIGURE).joinToString(" / ") { kind -> rows.count { index?.kind(it) == kind }.toString() }),
-                FactDto("Показателей", rows.mapNotNull { it[spec.metric] }.distinct().size.toString()),
+                FactDto("Найдено значений", rows.size.toString(), "Каждое место в статье, где встречается число, включая повторы одного и того же числа."),
+                FactDto(
+                    "Уникальных значений",
+                    rows.count { it[spec.duplicateOf] == null }.toString(),
+                    "Без повторов: одно и то же число одной записи, найденное в нескольких местах статьи, считается один раз.",
+                ),
+                FactDto("Откуда взяты", kinds.joinToString(" · ") { (kind, title) -> "$title ${rows.count { index?.kind(it) == kind }}" }),
+                FactDto("Разных показателей", rows.mapNotNull { it[spec.metric] }.distinct().size.toString()),
                 inputs.source?.takeIf { it == SourceDto.RESULTS }?.let { beyondGold(inputs.ref) },
-                quotes?.let { FactDto("Цитата найдена дословно", "${it.found} из ${it.values} (${percent(it.found, it.values)})", "по тексту страницы: pypdf, PyMuPDF или распознавание") },
-                quotes?.let { FactDto("Цитата для значений из текста и таблиц", "${it.textFound} из ${it.textValues} (${percent(it.textFound, it.textValues)})") },
-                normalization?.let { FactDto("Приведено к единицам профиля", "${it.converted} из ${it.values}") },
+                quotes?.let {
+                    FactDto(
+                        "Цитата найдена",
+                        "${it.found} из ${it.values} (${percent(it.found, it.values)})",
+                        "Цитату ищем дословно в тексте страницы так же, как организаторы: текст из pypdf, PyMuPDF или распознавания скана.",
+                    )
+                },
+                quotes?.let {
+                    FactDto(
+                        "Цитата найдена, без рисунков",
+                        "${it.textFound} из ${it.textValues} (${percent(it.textFound, it.textValues)})",
+                        "Подписей на графиках часто нет в текстовом слое, поэтому значения с рисунков считаем отдельно. Цель — не меньше 95 %.",
+                    )
+                },
+                normalization?.let {
+                    FactDto(
+                        "Пересчитано в единицы области",
+                        "${it.converted} из ${it.values}",
+                        "Значения, у которых система поменяла единицу или запись числа, например .204 → 0.204. У остальных менять было нечего.",
+                    )
+                },
                 normalization?.takeIf { it.vocabularyChecked > 0 }?.let {
-                    FactDto("Поля словарей допустимы", "${it.vocabularyValid} из ${it.vocabularyChecked} (${percent(it.vocabularyValid, it.vocabularyChecked)})")
+                    FactDto(
+                        "Поля со списком вариантов",
+                        "${it.vocabularyValid} из ${it.vocabularyChecked} допустимы (${percent(it.vocabularyValid, it.vocabularyChecked)})",
+                        "Поля, для которых профиль задаёт допустимые значения, например «в области / вне области».",
+                    )
                 },
             ),
         )
@@ -153,17 +196,35 @@ class PassportService(
         val checks = inputs.quality?.checks
         val audit = inputs.audit
         val repeats = inputs.index?.repeats
+        val titles = inputs.profile.display.checks
         return PassportSectionDto(
             "Проверки",
             listOfNotNull(
                 FactDto("Замечаний", (checks?.issues ?: 0).toString()),
-                checks?.let { FactDto("Подтверждено / отклонено референтом", "${it.confirmed} / ${it.dismissed}") },
+                checks?.let { FactDto("Разобрано референтом", "подтверждено ${it.confirmed}, снято ${it.dismissed}") },
                 audit?.let { current ->
-                    val byCheck = current.issues.groupingBy { it[Issues.CHECK].orEmpty() }.eachCount().entries.joinToString { "${it.key} ${it.value}" }
-                    FactDto("Найдено сервером", current.issues.size.toString() + byCheck.takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty(), "противоречия и несогласованные повторы, которых не было в issues.csv")
+                    val byCheck = current.issues.groupingBy { it[Issues.CHECK].orEmpty() }.eachCount().entries
+                        .joinToString("; ") { (check, count) -> "${titles[check]?.title ?: check} — $count" }
+                    FactDto(
+                        "Нашёл сервер",
+                        if (current.issues.isEmpty()) "ничего нового" else "${current.issues.size}: $byCheck",
+                        "Сервер сам проверяет таблицы по правилам профиля и добавляет замечания, которых не было в issues.csv.",
+                    )
                 },
-                audit?.let { FactDto("Повторов отмечено сервером", it.duplicates.toString(), "по ключу повтора из профиля, где duplicate_of был пуст") },
-                repeats?.let { FactDto("Совпадений между статьями", "пар статей: ${it.overlaps.size}, значений: ${it.values}", "одна метрика, число и единица у нескольких значений двух статей") },
+                audit?.let {
+                    FactDto(
+                        "Повторов отметил сервер",
+                        it.duplicates.toString(),
+                        "Повторы, не отмеченные в таблицах: сервер нашёл их по ключу повтора из профиля.",
+                    )
+                },
+                repeats?.let {
+                    FactDto(
+                        "Одни и те же результаты в разных статьях",
+                        if (it.overlaps.isEmpty()) "нет" else "пар статей ${it.overlaps.size}, значений ${it.values}",
+                        "У двух статей совпадают показатель, число и единица хотя бы у трёх значений. Обычно одна статья приводит результаты другой.",
+                    )
+                },
             ),
         )
     }
@@ -173,13 +234,25 @@ class PassportService(
         val models = articles.flatMap { it.models }.groupingBy { it }.eachCount()
         val prompts = articles.mapNotNull { it.promptVersion }.groupingBy { it }.eachCount()
         return PassportSectionDto(
-            "Происхождение",
+            "Откуда данные",
             listOfNotNull(
-                FactDto("PDF", "файлов: ${articles.size}, ${megabytes(articles.sumOf { it.bytes })}"),
-                FactDto("Манифест PDF", "sha256 ${inputs.files.manifest.take(SHORT_HASH)}", "хэш списка «статья — sha256 PDF»: совпадает, значит вход тот же"),
-                FactDto("Модель по кэшу ответов", models.entries.joinToString { "${it.key} (${it.value})" }.ifEmpty { "в кэше нет" }),
-                FactDto("Версия промпта", prompts.entries.joinToString { "${it.key} (${it.value})" }.ifEmpty { "нет файлов извлечения" }),
-                processing.info().model?.let { FactDto("Модель сервера для новых PDF", it) },
+                FactDto("Входные PDF", "${articles.size} шт., ${megabytes(articles.sumOf { it.bytes })}"),
+                FactDto(
+                    "Отпечаток входных PDF",
+                    inputs.files.manifest.take(SHORT_HASH),
+                    "Хэш списка «статья — хэш её PDF». Совпал — значит, набор собран из тех же файлов.",
+                ),
+                FactDto(
+                    "Модель извлечения",
+                    models.entries.joinToString { "${it.key} (статей: ${it.value})" }.ifEmpty { "неизвестна" },
+                    "Какой моделью извлекались значения — по сохранённым ответам модели.",
+                ),
+                FactDto(
+                    "Версия промпта",
+                    prompts.entries.joinToString { "${it.key} (статей: ${it.value})" }.ifEmpty { "неизвестна" },
+                    "Версия инструкции для модели. Меняется вместе с правилами извлечения; при той же версии и модели ответы берутся из кэша.",
+                ),
+                processing.info().model?.let { FactDto("Модель для новых загрузок", it) },
                 inputs.files.outputs.maxByOrNull { it.modified }?.let { FactDto("Таблицы обновлены", TIME.format(it.modified)) },
             ),
         )

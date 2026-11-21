@@ -217,22 +217,17 @@ private fun QuoteStatus(value: ValueDto) {
     val quote = value.quote
     when (quote.status) {
         QuoteStatusDto.FOUND -> Badge("найдена дословно · ${variantTitle(quote.variant)}", Tone.OK)
-        QuoteStatusDto.ROW_LABEL -> {
-            Badge("ссылка на строку таблицы", Tone.OK)
-            Text("Для таблиц профиль допускает цитату вида «Table N, строка X».", style = T.small, color = C.fg2, textAlign = TextAlign.End)
-        }
+        QuoteStatusDto.ROW_LABEL -> Badge("ссылка на строку таблицы", Tone.OK, hint = "Для таблиц профиль допускает цитату вида «Table N, строка X».")
         QuoteStatusDto.ELSEWHERE -> {
             Badge("найдена на другой странице", Tone.WARN)
             Text("Есть на стр. ${quote.pages.joinToString()}, а значение указывает на стр. ${value.page ?: "—"}.", style = T.small, color = C.fg2, textAlign = TextAlign.End)
         }
-        QuoteStatusDto.MISSING -> {
-            Badge("не найдена в тексте страницы", Tone.WARN)
-            if (value.kind == ValueKindDto.FIGURE) Text("Значение с рисунка: подписи на графике нет в текстовом слое. Для рисунков это допустимо.", style = T.small, color = C.fg2, textAlign = TextAlign.End)
-        }
-        QuoteStatusDto.NO_PAGE_TEXT -> {
-            Badge("нет текста страницы", Tone.WARN)
-            Text("Текст этой страницы не получен, проверить цитату не на чем.", style = T.small, color = C.fg2, textAlign = TextAlign.End)
-        }
+        QuoteStatusDto.MISSING -> Badge(
+            "не найдена в тексте страницы",
+            Tone.WARN,
+            hint = if (value.kind == ValueKindDto.FIGURE) "Значение с рисунка: подписей на графиках часто нет в текстовом слое, для рисунков это допустимо." else null,
+        )
+        QuoteStatusDto.NO_PAGE_TEXT -> Badge("нет текста страницы", Tone.WARN, hint = "Текст этой страницы не получен, проверить цитату не на чем.")
         QuoteStatusDto.NO_QUOTE -> Badge("цитаты нет", Tone.MISS)
     }
 }

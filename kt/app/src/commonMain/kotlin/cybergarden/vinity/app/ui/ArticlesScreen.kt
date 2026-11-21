@@ -141,11 +141,12 @@ private fun ArticlesHeader(store: AppStore, set: SetDto) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            InputBox(store.listQuery, { store.listQuery = it }, "Название, ID или DOI", Modifier.widthIn(min = 220.dp, max = 360.dp))
+            InputBox(store.listQuery, { store.listQuery = it }, "Название, ID или DOI", Modifier.align(Alignment.CenterVertically).widthIn(min = 220.dp, max = 360.dp))
             Segmented(
                 listOf(ListFilter.ALL to "Все", ListFilter.ISSUES to "С замечаниями", ListFilter.OUT to "Вне области"),
                 store.listFilter,
                 { store.listFilter = it },
+                Modifier.align(Alignment.CenterVertically),
             )
         }
     }

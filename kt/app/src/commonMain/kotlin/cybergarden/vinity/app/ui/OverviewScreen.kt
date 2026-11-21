@@ -19,8 +19,7 @@ fun OverviewScreen(store: AppStore) {
     val loading = store.loading
     val subtitle = listOfNotNull(
         store.profile?.title,
-        set?.let { setTitle(it.ref, it.uploads) },
-        "что видно сразу по всем извлечённым значениям",
+        set?.let { "набор ${setTitle(it.ref, it.uploads)}" },
     ).joinToString(" · ")
     ScreenList("overview-${set?.ref?.path}-${set?.source}") {
         centered("head") { PageHeader("Обзор набора", subtitle) }

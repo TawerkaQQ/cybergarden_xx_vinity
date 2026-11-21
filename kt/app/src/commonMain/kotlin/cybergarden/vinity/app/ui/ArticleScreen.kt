@@ -85,9 +85,8 @@ private fun ArticleHeader(store: AppStore, article: ArticleDto) {
         }
         FieldRow("DOI", first = false) { Text(article.doi ?: "—", style = T.mono, textAlign = TextAlign.End) }
         if (article.overlaps.isNotEmpty()) {
-            FieldRow("Те же результаты", first = false) {
-                Text("Совпадают метрика, число и единица у нескольких значений", style = T.small, color = C.fg2, textAlign = TextAlign.End)
-                FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            FieldRow("Те же результаты", first = false, info = "У статей совпадают показатель, число и единица хотя бы у трёх значений. Обычно одна статья приводит результаты другой.") {
+                FlowRow( horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     article.overlaps.forEach { overlap ->
                         Chip("${overlap.publicationId} · ${plural(overlap.values, Values)}", pressed = false, onClick = { store.openArticle(overlap.publicationId) }, hint = store.set?.articles?.firstOrNull { it.id == overlap.publicationId }?.title)
                     }
@@ -219,21 +218,20 @@ private fun ValuesToolbar(store: AppStore, comparison: ComparisonDto?) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val center = Modifier.align(Alignment.CenterVertically)
             Segmented(
                 listOf(GroupBy.RECORD to (store.profile?.groupByRecord ?: "По записям"), GroupBy.METRIC to "По показателям"),
                 store.groupBy,
                 { store.groupBy = it },
+                center,
             )
-            Toggle("Показывать повторы", store.showDuplicates, { store.showDuplicates = it })
-            Toggle("Только с замечаниями", store.onlyIssues, { store.onlyIssues = it })
-            if (store.canCompare) Toggle("Сравнить с экспертами", store.compare, store::toggleCompare)
+            Row(center, verticalAlignment = Alignment.CenterVertically) {
+                Toggle("Показывать повторы", store.showDuplicates, { store.showDuplicates = it })
+                InfoIcon("Повтор — то же число, найденное в другом месте статьи. Основным считается упоминание из таблицы, затем с рисунка.")
+            }
+            Toggle("Только с замечаниями", store.onlyIssues, { store.onlyIssues = it }, center)
+            if (store.canCompare) Toggle("Сравнить с экспертами", store.compare, store::toggleCompare, center)
         }
-        Text(
-            "Повтор — то же число, найденное в другом месте статьи. Основным считается упоминание из таблицы, затем с рисунка.",
-            Modifier.padding(bottom = 4.dp),
-            style = T.small,
-            color = C.fg2,
-        )
         if (comparison != null) {
             val extra = comparison.extra.toSet()
             FlowRow(
@@ -243,7 +241,6 @@ private fun ValuesToolbar(store: AppStore, comparison: ComparisonDto?) {
                 CompareStat("Совпало с экспертами", article.values.count { it.id !in extra }.toString(), C.fg)
                 CompareStat("Лишних", extra.size.toString(), C.warnInk)
                 CompareStat("Пропущено системой", comparison.missed.size.toString(), C.fg)
-                Text("Пропущенные показаны бледными строками в своих группах.", style = T.small, color = C.fg2)
             }
         }
     }

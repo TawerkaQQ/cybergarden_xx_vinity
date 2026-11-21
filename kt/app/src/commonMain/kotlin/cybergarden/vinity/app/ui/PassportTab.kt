@@ -27,7 +27,7 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
     }
     centered("passport-intro") {
         Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Explain("Что в наборе, откуда он взялся и как получить его заново. Хэши PDF и таблиц показывают, что вход и выход те же; команды ниже повторяют весь путь от PDF до оценки.")
+            Explain("Что в наборе, откуда он взялся и как получить его заново.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PrimaryButton("Скачать паспорт (JSON)", store::downloadPassport, glyph = Glyph.DOWNLOAD)
                 DefaultButton("Выгрузить таблицы CSV", store::exportCsv, glyph = Glyph.FILE)
@@ -40,9 +40,8 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
             Block(Modifier.padding(bottom = 12.dp)) {
                 SectionHeader(section.title)
                 section.facts.forEachIndexed { index, fact ->
-                    FieldRow(fact.label, first = index == 0) {
+                    FieldRow(fact.label, first = index == 0, info = fact.hint) {
                         Text(fact.value, style = T.body, textAlign = TextAlign.End)
-                        fact.hint?.let { Text(it, Modifier.subline(), style = T.small, color = C.fg2, textAlign = TextAlign.End) }
                     }
                 }
             }
@@ -51,7 +50,7 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
     if (passport.accuracy.isNotEmpty()) {
         centered("passport-accuracy") {
             Block(Modifier.padding(bottom = 12.dp)) {
-                SectionHeader("Точность и полнота против эталона", "основные значения без повторов; в скобках — все упоминания")
+                SectionHeader("Точность и полнота против эталона", "по уникальным значениям; в скобках — по всем упоминаниям")
                 passport.accuracy.forEachIndexed { index, accuracy -> AccuracyRow(accuracy, index == 0) }
             }
         }
@@ -83,7 +82,7 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
     if (passport.outputs.isNotEmpty()) {
         centered("passport-outputs") {
             Block(Modifier.padding(bottom = 12.dp)) {
-                SectionHeader("Выходные файлы", "sha256 первых ${SHORT_HASH} знаков; полный хэш — в JSON паспорта")
+                SectionHeader("Выходные файлы", "первые ${SHORT_HASH} знаков sha256, полный хэш — в JSON")
                 passport.outputs.forEachIndexed { index, file ->
                     FieldRow(file.name, first = index == 0) {
                         Text(listOfNotNull(file.rows?.let { "строк: $it" }, kilobytes(file.bytes), file.modified).joinToString(" · "), style = T.body, textAlign = TextAlign.End)
@@ -96,7 +95,7 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
     if (passport.articles.isNotEmpty()) {
         centered("passport-articles") {
             Block(Modifier.padding(bottom = 12.dp)) {
-                SectionHeader("Входные PDF", "модель и версия промпта — по кэшу ответов модели и файлам извлечения")
+                SectionHeader("Входные PDF")
                 passport.articles.forEachIndexed { index, article ->
                     FieldRow(article.id, first = index == 0) {
                         Text(article.sha256.take(SHORT_HASH), style = T.mono)
@@ -127,13 +126,13 @@ fun LazyListScope.passportTab(store: AppStore, passport: PassportDto?) {
 private fun AccuracyRow(accuracy: AccuracyDto, first: Boolean) {
     val primary = accuracy.primaryRecords
     val all = accuracy.allMentions
-    FieldRow(if (accuracy.strict) "Строгое сравнение" else "Мягкое сравнение", first = first) {
+    val info = "Значение считается найденным, если совпадают поля: ${accuracy.matchedBy.joinToString()}. Сравнивались статьи, у которых есть и результат, и эталон: ${accuracy.publicationsScored}."
+    FieldRow(if (accuracy.strict) "Строгое сравнение" else "Мягкое сравнение", first = first, info = info) {
         Text(
             "точность ${fixed2(primary.precision)} (${fixed2(all.precision)}) · полнота ${fixed2(primary.recall)} (${fixed2(all.recall)}) · F1 ${fixed2(primary.f1)} (${fixed2(all.f1)})",
             style = T.body,
             textAlign = TextAlign.End,
         )
-        Text("по полям: ${accuracy.matchedBy.joinToString()} · статей: ${accuracy.publicationsScored}", style = T.small, color = C.fg2, textAlign = TextAlign.End)
     }
 }
 

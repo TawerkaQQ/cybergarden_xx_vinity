@@ -29,7 +29,7 @@ fun AskScreen(store: AppStore) {
     ScreenList("ask-${set?.ref?.path}-${set?.source}") {
         centered("head") { PageHeader("Вопрос по статьям", subtitle) }
         centered("intro") {
-            Explain("Система ищет фрагменты в тексте статей набора и в извлечённых значениях, а модель отвечает только по ним. У каждого утверждения есть номер источника: по клику открывается страница статьи или карточка значения.")
+            Explain("Ответ строится только по тексту статей набора и извлечённым значениям. Номер в скобках — ссылка на источник.")
         }
         centered("input") {
             Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

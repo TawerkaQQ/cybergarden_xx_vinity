@@ -164,13 +164,27 @@ fun Block(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-fun FieldRow(label: String, first: Boolean, modifier: Modifier = Modifier, value: @Composable ColumnScope.() -> Unit) {
+fun InfoIcon(text: String?) {
+    if (text.isNullOrBlank()) return
+    WithHint(text) { GlyphIcon(Glyph.INFO, C.fg3, Modifier.padding(start = 4.dp), size = 14.dp) }
+}
+
+@Composable
+fun LabelWithInfo(label: String, info: String?, modifier: Modifier = Modifier, style: TextStyle = T.body, color: Color = C.fg2) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f, fill = false), style = style, color = color)
+        InfoIcon(info)
+    }
+}
+
+@Composable
+fun FieldRow(label: String, first: Boolean, modifier: Modifier = Modifier, info: String? = null, value: @Composable ColumnScope.() -> Unit) {
     Row(
         modifier.fillMaxWidth().topDivider(!first, C.divider).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, Modifier.weight(1f), style = T.body, color = C.fg2)
+        LabelWithInfo(label, info, Modifier.weight(1f))
         Column(Modifier.weight(if (LocalWidth.current == Width.PHONE) 2f else 1f), horizontalAlignment = Alignment.End, content = value)
     }
 }

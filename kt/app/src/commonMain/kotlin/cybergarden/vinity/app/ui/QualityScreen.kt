@@ -26,7 +26,6 @@ import cybergarden.vinity.api.ValueKindDto
 import cybergarden.vinity.app.AppStore
 import cybergarden.vinity.app.QualityTab
 import cybergarden.vinity.app.TableSort
-import kotlin.math.roundToInt
 
 private val Ink = Color(0xFF1F1F1F)
 private val Times = Word("раз", "раза", "раз")
@@ -36,7 +35,7 @@ private const val UNIT_METRICS = 40
 private const val METRIC_TABLE = "metrics"
 private const val CHECK_TABLE = "checks"
 
-private class TileSpec(val title: String, val value: String, val note: String, val badge: Pair<String, Tone>? = null)
+private class TileSpec(val title: String, val value: String, val note: String?, val badge: Pair<String, Tone>? = null, val info: String? = null)
 
 private class MetricScore(val code: String, val title: String, val counts: CountsDto) {
     val support: Int get() = counts.truePositive + counts.falseNegative
@@ -69,7 +68,7 @@ fun QualityScreen(store: AppStore) {
     val loading = store.loading
     val strict = store.strict
     val primaryOnly = store.primaryOnly
-    val subtitle = listOfNotNull(profile?.title, set?.let { "набор ${setTitle(it.ref, it.uploads)}" }, "вкладки повторяют критерии кейса").joinToString(" · ")
+    val subtitle = listOfNotNull(profile?.title, set?.let { "набор ${setTitle(it.ref, it.uploads)}" }).joinToString(" · ")
     ScreenList("quality-${set?.ref?.path}-${set?.source}-$tab") {
         centered("head") { PageHeader("Качество", subtitle) }
         centered("tabs") {
@@ -103,7 +102,7 @@ private fun LazyListScope.unavailable() {
 private fun LazyListScope.extractTab(store: AppStore, score: ScoreDto?, profile: ProfileDto?, strict: Boolean, primaryOnly: Boolean) {
     if (score == null) {
         centered("no-score") {
-            EmptyState("Точность и полноту считаем, когда у набора есть и результат системы, и эталон экспертов. Здесь чего-то из двух нет, поэтому сравнивать не с чем. Остальные вкладки работают.")
+            EmptyState("Для точности и полноты нужны и результат системы, и эталон экспертов. У этого набора одного из них нет.")
         }
         return
     }
@@ -117,18 +116,29 @@ private fun LazyListScope.extractTab(store: AppStore, score: ScoreDto?, profile:
         (if (primaryOnly) "Считаем только основные упоминания, без повторов." else "Считаем каждое найденное место в статье, включая повторы.") +
         " Эталон — ${score.publicationsScored} из ${score.publicationsInGold} статей."
     centered("modes") {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Segmented(listOf(true to "Строгое сравнение", false to "Мягкое"), strict, store::selectStrict)
-            Segmented(listOf(false to "Все упоминания", true to "Только основные"), primaryOnly, { store.primaryOnly = it })
+        FlowRow(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val center = Modifier.align(Alignment.CenterVertically)
+            Segmented(listOf(true to "Строгое сравнение", false to "Мягкое"), strict, store::selectStrict, center)
+            Segmented(listOf(false to "Все упоминания", true to "Только основные"), primaryOnly, { store.primaryOnly = it }, center)
+            Box(center) { InfoIcon(modeHint) }
         }
     }
-    centered("modes-hint") { Muted(modeHint, Modifier.padding(top = 8.dp, bottom = 12.dp), small = true) }
     centered("tiles") {
         TileRow(
             listOf(
-                TileSpec("Точность", fixed2(counts.precision), "Из 100 найденных значений ${hundred(counts.precision)} есть у экспертов. Остальные лишние."),
-                TileSpec("Полнота", fixed2(counts.recall), "Из 100 значений экспертов система нашла ${hundred(counts.recall)}."),
-                TileSpec("F1", fixed2(counts.f1), "Общая оценка: среднее гармоническое точности и полноты. 1 — идеально."),
+                TileSpec(
+                    "Точность",
+                    fixed2(counts.precision),
+                    "${counts.truePositive} из ${counts.truePositive + counts.falsePositive} найденных есть у экспертов",
+                    info = "Какая доля найденных системой значений совпала с эталоном экспертов. Остальные — лишние или находки сверх эталона.",
+                ),
+                TileSpec(
+                    "Полнота",
+                    fixed2(counts.recall),
+                    "найдено ${counts.truePositive} из ${counts.truePositive + counts.falseNegative} значений экспертов",
+                    info = "Какую долю значений из эталона экспертов нашла система.",
+                ),
+                TileSpec("F1", fixed2(counts.f1), null, info = "Общая оценка: среднее гармоническое точности и полноты. Высокая, только если высоки обе. 1 — идеально."),
             ),
         )
     }
@@ -204,12 +214,8 @@ private fun metricTip(metric: MetricScore): String = with(metric.counts) {
     "${metric.title}\nТочность ${fixed2(precision)} · Полнота ${fixed2(recall)} · F1 ${fixed2(f1)}\nСовпало $truePositive · лишних $falsePositive · пропущено $falseNegative"
 }
 
-private fun hundred(share: Double): Int = (share * 100).roundToInt()
 
 private fun LazyListScope.quotesTab(store: AppStore, quotes: QuoteQualityDto) {
-    centered("q-intro") {
-        Intro("Проверяем так же, как организаторы: ищем цитату дословно в тексте страницы — из pypdf, PyMuPDF или распознавания скана.")
-    }
     if (quotes.values == 0) {
         centered("q-empty") { EmptyState("Значений пока нет.") }
         return
@@ -226,13 +232,19 @@ private fun LazyListScope.quotesTab(store: AppStore, quotes: QuoteQualityDto) {
         TileRow(
             listOf(
                 TileSpec(
-                    "Значения из таблиц и текста",
+                    "Цитата найдена: таблицы и текст",
                     percent(quotes.textFound, quotes.textValues),
-                    "цитата найдена у ${quotes.textFound} из ${quotes.textValues}. Цель — не меньше 95 %.",
-                    if (quotes.textValues == 0) null else if (goal) "цель достигнута" to Tone.OK else "ниже цели" to Tone.ERR,
+                    "${quotes.textFound} из ${quotes.textValues} значений",
+                    if (quotes.textValues == 0) null else if (goal) "цель 95 % достигнута" to Tone.OK else "ниже цели 95 %" to Tone.ERR,
+                    info = "Цитата ищется дословно в тексте страницы, как у организаторов. Значения с рисунков здесь не считаются: подписей на графиках часто нет в текстовом слое.",
                 ),
-                TileSpec("Все значения", percent(quotes.found, quotes.values), "${quotes.found} из ${quotes.values}, включая значения с рисунков"),
-                TileSpec("Без цитаты", without.toString(), withoutNote),
+                TileSpec(
+                    "Цитата найдена: все значения",
+                    percent(quotes.found, quotes.values),
+                    "${quotes.found} из ${quotes.values} значений",
+                    info = "То же, но вместе со значениями с рисунков.",
+                ),
+                TileSpec("Без цитаты", without.toString(), withoutNote, info = "Значения, для которых цитату не нашли на странице. Их стоит проверить глазами."),
             ),
         )
     }
@@ -260,7 +272,6 @@ private fun LazyListScope.quotesTab(store: AppStore, quotes: QuoteQualityDto) {
 }
 
 private fun LazyListScope.normalizationTab(store: AppStore, normalization: NormalizationDto, profile: ProfileDto?) {
-    centered("n-intro") { Intro("Всё, что система поменяла в записи числа, видно рядом со значением: «в статье → у нас».") }
     if (normalization.values == 0) {
         centered("n-empty") { EmptyState("Значений пока нет.") }
         return
@@ -269,22 +280,29 @@ private fun LazyListScope.normalizationTab(store: AppStore, normalization: Norma
     centered("n-tiles") {
         TileRow(
             listOf(
-                TileSpec("В целевых единицах", "$complete из ${normalization.metrics.size}", "показателей набора полностью приведены к единицам профиля"),
-                TileSpec("Преобразовано значений", normalization.converted.toString(), "остальные ${normalization.values - normalization.converted} записаны в статье уже в нужном виде"),
                 TileSpec(
-                    "Словарные поля",
+                    "Показатели в единицах области",
+                    "$complete из ${normalization.metrics.size}",
+                    null,
+                    info = "Сколько показателей набора целиком записаны в единицах, принятых в профиле области.",
+                ),
+                TileSpec(
+                    "Пересчитано значений",
+                    normalization.converted.toString(),
+                    "остальные ${normalization.values - normalization.converted} уже были записаны как нужно",
+                    info = "Значения, у которых система поменяла единицу или запись числа: например, .204 → 0.204 или секунды → миллисекунды.",
+                ),
+                TileSpec(
+                    "Поля со списком вариантов",
                     percent(normalization.vocabularyValid, normalization.vocabularyChecked),
-                    if (normalization.vocabularyChecked == 0) {
-                        "в данных нет заполненных словарных колонок"
-                    } else {
-                        "${normalization.vocabularyValid} из ${normalization.vocabularyChecked} значений словарных колонок — из допустимых"
-                    },
+                    if (normalization.vocabularyChecked == 0) "таких полей в данных нет" else "${normalization.vocabularyValid} из ${normalization.vocabularyChecked} — из допустимых",
+                    info = "Поля, для которых профиль задаёт список допустимых значений, например «в области / вне области». Показывает, сколько записанных значений попало в этот список.",
                 ),
             ),
         )
     }
     if (normalization.conversions.isNotEmpty()) {
-        centered("n-conversions-head") { SectionHeader("Преобразования", "Как запись из статьи переведена в единицы профиля. Нажмите, чтобы открыть пример") }
+        centered("n-conversions-head") { SectionHeader("Преобразования", "Нажмите, чтобы открыть пример") }
         blockItems(normalization.conversions.withIndex().toList(), key = { "n-conversion-${it.index}" }) { (_, conversion), first ->
             Row(
                 Modifier.fillMaxWidth().topDivider(!first, C.divider).press { store.openValue(conversion.publicationId, conversion.example.id) }.padding(12.dp),
@@ -335,17 +353,16 @@ private fun LazyListScope.normalizationTab(store: AppStore, normalization: Norma
 }
 
 private fun LazyListScope.checksTab(store: AppStore, checks: ChecksQualityDto, profile: ProfileDto?, source: SourceDto?) {
-    centered("c-intro") { Intro("Правила проверки задаёт профиль области. Каждое замечание — с числами с обеих сторон и цитатами.") }
     val gold = checks.gold
     val reviewed = checks.confirmed + checks.dismissed
     centered("c-tiles") {
         TileRow(
             buildList {
                 if (gold != null) {
-                    add(TileSpec("Совпало с экспертами", "${gold.matched} из ${gold.goldTotal}", "замечаний эталона система нашла сама"))
-                    add(TileSpec("Нашли только мы", gold.onlyOurs.size.toString(), "новая находка или ложная тревога — решает референт"))
+                    add(TileSpec("Совпало с экспертами", "${gold.matched} из ${gold.goldTotal}", null, info = "Сколько замечаний из эталона экспертов система нашла сама."))
+                    add(TileSpec("Нашли только мы", gold.onlyOurs.size.toString(), null, info = "Замечания системы, которых нет у экспертов: новая находка или ложная тревога. Решает референт."))
                 } else {
-                    val note = if (source == SourceDto.GOLD) "замечания экспертов из эталона набора" else "эталона нет, сравнивать не с чем"
+                    val note = if (source == SourceDto.GOLD) "замечания экспертов из эталона" else "эталона нет, сравнивать не с чем"
                     add(TileSpec("Замечаний", checks.issues.toString(), note))
                 }
                 add(TileSpec("Разобрано референтом", "$reviewed из ${checks.issues}", "подтверждено ${checks.confirmed}, снято ${checks.dismissed}"))
@@ -378,7 +395,7 @@ private fun LazyListScope.checksTab(store: AppStore, checks: ChecksQualityDto, p
     if (gold == null) return
     if (gold.onlyOurs.isNotEmpty()) {
         centered("c-ours-head") {
-            SectionHeader("Нашли только мы", "Проверьте глазами: если это ошибка в статье, это сильный пример для презентации")
+            SectionHeader("Нашли только мы", "Новая находка или ложная тревога — проверьте глазами")
         }
         gold.onlyOurs.forEach { issue ->
             centered("c-ours-${issue.publicationId}-${issue.id}") {
@@ -397,19 +414,14 @@ private fun LazyListScope.checksTab(store: AppStore, checks: ChecksQualityDto, p
 }
 
 @Composable
-private fun Intro(text: String) {
-    Muted(text, Modifier.padding(bottom = 12.dp), small = true)
-}
-
-@Composable
 private fun TileRow(tiles: List<TileSpec>) {
     AdaptiveGrid(tiles.size, 200.dp, equalHeight = true) { index, modifier ->
         val tile = tiles[index]
         Block(modifier) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) {
-                Text(tile.title, style = T.body, color = C.fg2)
+                LabelWithInfo(tile.title, tile.info)
                 Text(tile.value, Modifier.padding(vertical = 4.dp), style = T.tile)
-                Text(tile.note, style = T.small, color = C.fg2)
+                tile.note?.let { Text(it, style = T.small, color = C.fg2) }
                 tile.badge?.let { (text, tone) -> Row(Modifier.padding(top = 6.dp)) { Badge(text, tone) } }
             }
         }

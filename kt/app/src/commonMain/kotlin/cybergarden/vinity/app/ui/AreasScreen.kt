@@ -28,7 +28,7 @@ fun AreasScreen(store: AppStore) {
         centered("head") {
             PageHeader(
                 "Области",
-                "Ядро одно для всех областей. Область — это профиль: таблицы, словари, единицы и правила проверки. Код под область не пишется.",
+                "Область описывается профилем: таблицы, словари, единицы и правила проверки. Код под область не пишется.",
             )
         }
         system?.let { numbers -> centered("system") { SystemBlock(numbers) } }
@@ -37,12 +37,12 @@ fun AreasScreen(store: AppStore) {
             AdaptiveGrid(profiles.size, 320.dp) { index, modifier -> ProfileCard(store, profiles[index], modifier) }
         }
         centered("connect-head") {
-            SectionHeader("Подключить новую область", "Нужны два файла: profiles/<имя>/profile.json (таблицы, словари, единицы) и rules.md (правила для модели)")
+            SectionHeader("Подключить новую область")
         }
         centered("connect") { ConnectBlock(store, upload) }
         if (demo.isNotEmpty()) {
             centered("demo-head") {
-                SectionHeader("Сценарий демо", "Заготовленные случаи из настоящих данных. Ссылка открывает приложение сразу на нужном месте.")
+                SectionHeader("Сценарий демо", "Готовые примеры из настоящих данных")
             }
             blockItems(demo.withIndex().toList(), key = { "demo-${it.index}" }) { (_, case), first -> DemoRow(store, case, first) }
         }
@@ -61,7 +61,7 @@ private fun SystemBlock(system: SystemDto) {
         "Областей" to system.profiles,
     )
     Block {
-        SectionHeader("Система в цифрах", "По всем наборам: эталон или результат системы, что есть")
+        SectionHeader("Система в цифрах")
         AdaptiveGrid(numbers.size, 140.dp, gap = 0.dp, equalHeight = true) { index, modifier ->
             Column(modifier.padding(12.dp), verticalArrangement = Arrangement.Bottom) {
                 Muted(numbers[index].first, small = true)
@@ -147,7 +147,7 @@ private fun ConnectBlock(store: AppStore, upload: ProfileUploadDto?) {
             if (created != null) {
                 Alert(Tone.OK, Glyph.CHECK) {
                     Text("Область «${created.title}» подключена", style = T.alert)
-                    Text("Ни одной строки кода: только профиль. Новую область можно выбрать при загрузке статей.", style = T.body)
+                    Text("Её можно выбрать при загрузке статей.", style = T.body)
                 }
             } else {
                 Alert(Tone.ERR, Glyph.WARN) {
