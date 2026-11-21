@@ -34,5 +34,8 @@ class ProfileExtraction:
             result = self._ask(request, self._mentions_schema)
         return result
 
+    def cited_mentions(self, article: Article, structure: dict[str, Any]) -> dict[str, Any]:
+        return self._ask(self._prompts.cited_request(article, structure), self._mentions_schema)
+
     def _ask(self, request: str, schema: dict[str, Any]) -> dict[str, Any]:
         return self._model.complete(self._prompts.system, request, schema)

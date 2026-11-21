@@ -28,6 +28,9 @@ class CachedExtractionModel:
     def mentions(self, article: Article, structure: dict[str, Any]) -> dict[str, Any]:
         return self._cached(article, "mentions", lambda: self._model.mentions(article, structure))
 
+    def cited_mentions(self, article: Article, structure: dict[str, Any]) -> dict[str, Any]:
+        return self._cached(article, "cited", lambda: self._model.cited_mentions(article, structure))
+
     def _cached(self, article: Article, step: str, compute: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         path = self._directory / hashlib.sha256(article.content).hexdigest() / self._key / f"{step}.json"
         if path.exists():

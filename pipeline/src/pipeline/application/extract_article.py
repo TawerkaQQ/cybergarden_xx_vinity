@@ -5,7 +5,8 @@ from typing import Any
 
 from pipeline.domain.article import Article
 from pipeline.domain.extract import ExtractResult
-from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
+from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape, as_text
+from pipeline.domain.numbers import parse_number
 from pipeline.domain.ports import ArticleReader, ExtractionModel, ExtractStore
 
 NO_MENTIONS = {"mentions": []}
@@ -49,7 +50,13 @@ class ExtractArticle:
             if len(from_table) > found[name]:
                 kept = [mention for mention in mentions if normalized(mention["table"]) != name]
                 mentions = kept + [{**mention, "table": table["table"]} for mention in from_table]
-        return mentions
+        known = {mention_key(mention) for mention in mentions}
+        cited = self._model.cited_mentions(article, structure)["mentions"]
+        return mentions + [mention for mention in cited if mention_key(mention) not in known]
+
+
+def mention_key(mention: dict[str, Any]) -> tuple[str, float | None, int]:
+    return normalized(mention["metric"]), parse_number(as_text(mention["raw_value"])), mention["page"]
 
 
 def expected_cells(table: dict[str, Any]) -> int:

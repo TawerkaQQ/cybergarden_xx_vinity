@@ -6,7 +6,7 @@ from pipeline.domain.article import Article
 from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
 from pipeline.domain.profile import Table
 
-ENGINE_VERSION = "4"
+ENGINE_VERSION = "5"
 ROW_LABEL = "row_label"
 
 SYSTEM = """\
@@ -57,10 +57,18 @@ TABLE_TASK = """\
 Проход B, таблица {table} на странице {page}. Выпиши каждую ячейку этой таблицы со значением — только этой таблицы — и привяжи к записям прохода A (результат прохода A — в конце).
 
 - Столбцы слева направо: {columns}.
+- Текст страницы {page} повторён в конце. Найди в нём строку заголовка таблицы: порядок столбцов бери из неё, а если он расходится со списком выше — верь тексту страницы.
 - В тексте страницы строка таблицы — это подпись и числа подряд в порядке этих столбцов. Сопоставляй число со столбцом по позиции в строке, а не по смыслу. Прочерк занимает свою позицию; пустая ячейка в тексте не видна — если чисел меньше, чем столбцов, найди пропуск по смыслу соседних строк.
 - Строки сверху вниз ({row_count}): {rows}.
 - В каждой строке — каждый столбец с показателем, в котором есть число. Не останавливайся, пока не пройдёшь все строки до последней.
 - table — «{table}», page — {page}, figure — рисунок, если таблица к нему относится.
+{rules}"""
+
+CITED_TASK = """\
+Проход B, значения из чужих работ. Найди во всей статье числа, которые авторы приводят из других работ: во введении, обсуждении и выводах, при сравнении с литературой, рекорды и теоретические пределы, строки таблиц со ссылками на другие работы. Собственные результаты авторов не выписывай.
+
+- Каждое такое число — отдельный элемент mentions, origin — то значение из списка «{origins}», которое означает чужую работу; cited — ссылка как в статье («[12]», «[19–21]», «Bai et al., 2018»), а если ссылки рядом нет — null; refs — null.
+- Пройди каждый абзац введения и обсуждения: такие числа легко пропустить.
 {rules}"""
 
 MENTION_RULES = """\
@@ -76,7 +84,7 @@ MENTION_RULES = """\
 - Не выписывай производные числа, если правила области не говорят иначе: разности и приросты («improves Voc of 0.127 V», «increased by 3.6%», «enhancement of 25%»), отношения, проценты изменения."""
 
 ROW_LABEL_RULE = " Для значения из таблицы quote пиши ровно так: «Table N, строка <подпись строки>» — обозначение таблицы как в статье, слово «строка» по-русски, подпись строки как в первой ячейке строки, без столбца."
-METRICS_RULE = " Оцениваемые показатели называй ровно так: {names}. Имя оцениваемого показателя ставь, только если в статье именно эта величина; другие величины, даже похожие по смыслу или единице, называй как в статье."
+METRICS_RULE = " Оцениваемые показатели называй ровно так: {names}. Имя оцениваемого показателя ставь, только если в статье именно эта величина; другие величины, даже похожие по смыслу, называй как в статье. У оцениваемого показателя своя целевая единица (список в разделе mentions): если единица значения в неё не переводится — например, время, когда показатель в процентах, — это другая величина."
 
 
 class PromptBook:
@@ -115,10 +123,15 @@ class PromptBook:
             row_count=len(table["rows"]),
             rules=self.mention_rules,
         )
-        return self._with_structure(article, task, structure)
+        page = next((page.text for page in article.pages if page.number == table["page"]), "")
+        return f"{self._with_structure(article, task, structure)}\n\nТекст страницы {table['page']}:\n{page}"
 
     def mentions_request(self, article: Article, structure: dict[str, Any]) -> str:
         task = MENTIONS_TASK.format(rules=self.mention_rules)
+        return self._with_structure(article, task, structure)
+
+    def cited_request(self, article: Article, structure: dict[str, Any]) -> str:
+        task = CITED_TASK.format(origins=self._choices("origin"), rules=self.mention_rules)
         return self._with_structure(article, task, structure)
 
     @staticmethod
@@ -162,7 +175,7 @@ class PromptBook:
     def _digest(self) -> str:
         payload = json.dumps(
             [
-                self.system, self.structure_task, self.tables_task, MENTIONS_TASK, TABLE_TASK, self.mention_rules,
+                self.system, self.structure_task, self.tables_task, MENTIONS_TASK, TABLE_TASK, CITED_TASK, self.mention_rules,
                 self._shape.structure_schema(), self._shape.tables_schema(), self._shape.mentions_schema(),
             ],
             ensure_ascii=False,
