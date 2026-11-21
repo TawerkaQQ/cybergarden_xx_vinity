@@ -6,6 +6,7 @@ KEPT = re.compile(r"[a-z0-9.%]")
 WORD = re.compile(r"\w+")
 WINDOW_CHARACTERS = 45
 MIN_QUOTE_CHARACTERS = 4
+MIN_PREFIX_WORDS = 4
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,20 @@ class QuoteLocator:
                 fragment = self._window(self._pages[number].text, raw_value, quote or "")
                 if fragment:
                     return Located(number, fragment, "по числу")
+        if quote:
+            for number in order:
+                fragment = self._longest_prefix(self._pages[number], quote)
+                if fragment:
+                    return Located(number, fragment, "по началу цитаты")
+        return None
+
+    @staticmethod
+    def _longest_prefix(page: "NormalizedPage", quote: str) -> str | None:
+        words = quote.split()
+        for length in range(len(words) - 1, MIN_PREFIX_WORDS - 1, -1):
+            fragment = page.find(" ".join(words[:length]))
+            if fragment:
+                return fragment
         return None
 
     def table_page(self, table: str, row_label: str, page: int | None, raw_value: str | None = None) -> int | None:
