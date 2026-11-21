@@ -7,7 +7,7 @@ from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape, RecordSh
 from pipeline.domain.numbers import format_number, parse_number
 from pipeline.domain.profile import PUBLICATION_ID, Profile, Table
 from pipeline.domain.quotes import QuoteLocator
-from pipeline.domain.units import UnitBook
+from pipeline.domain.units import Converted, UnitBook
 
 LIST_SEPARATOR = ";"
 NOTE = "note"
@@ -183,7 +183,14 @@ class Assembler:
         raw_unit = self._units.canonical(mention.get("raw_unit") or mention.get("unit"))
         row[values.column("raw_unit")] = raw_unit
         metric = mention["metric"]
-        converted = self._units.convert(parse_number(mention.get("raw_value")), raw_unit, values.metrics.get(metric))
+        number = parse_number(mention.get("raw_value"))
+        converted = self._units.convert(number, raw_unit, values.metrics.get(metric))
+        inferred = self._unit_by_range(metric, number, raw_unit, converted)
+        if inferred:
+            raw_unit, converted = inferred
+            row[values.column("raw_unit")] = raw_unit
+            report["единица выведена по диапазону"] += 1
+            add_note(row, f"по разумному диапазону {metric} единица — {raw_unit}, а не «{mention.get('raw_unit') or mention.get('unit') or 'не указана'}»")
         if mention.get("raw_value") and converted.value is None:
             report["значение не разобрано"] += 1
             add_note(row, f"значение «{mention['raw_value']} {raw_unit}» не переведено в целевую единицу".strip())
@@ -196,6 +203,21 @@ class Assembler:
             row[mirror] = row[values.column(source)]
         self._place_quote(row, mention, locator, report)
         return row
+
+    def _unit_by_range(self, metric: str, number: float | None, raw_unit: str, converted: Converted) -> tuple[str, Converted] | None:
+        target = self._profile.values.metrics.get(metric)
+        bounds = self._profile.ranges.get(metric)
+        if number is None or not target or not bounds:
+            return None
+        if converted.value is not None and bounds[0] <= converted.value <= bounds[1]:
+            return None
+        options = [(target, 1.0)] + [(conversion.source, conversion.factor) for conversion in self._profile.conversions if conversion.target == target]
+        candidates = [
+            (unit, Converted(number * factor, target, True))
+            for unit, factor in options
+            if unit != raw_unit and bounds[0] <= number * factor <= bounds[1]
+        ]
+        return candidates[0] if len(candidates) == 1 else None
 
     def _place_quote(self, row: dict[str, str], mention: dict[str, Any], locator: QuoteLocator, report: Counter) -> None:
         values = self._profile.values
