@@ -23,6 +23,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.net.URI
+import java.util.Properties
 import java.util.prefs.Preferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,7 +36,19 @@ actual class LocalFile(val file: File) {
 
 private var locationHash = ""
 
-actual fun defaultApiUrl(): String = System.getProperty("vinity.api") ?: "http://localhost:8081"
+actual fun defaultApiUrl(): String =
+    System.getProperty("vinity.api")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("VINITY_API")?.takeIf { it.isNotBlank() }
+        ?: configFile()?.let { file -> Properties().apply { file.reader(Charsets.UTF_8).use { load(it) } }.getProperty(API_KEY)?.trim()?.takeIf { it.isNotBlank() } }
+        ?: DEFAULT_API
+
+private fun configFile(): File? = listOfNotNull(System.getProperty("jpackage.app-path")?.let { File(it).parentFile }, File(System.getProperty("user.dir")))
+    .map { File(it, CONFIG_FILE) }
+    .firstOrNull { it.isFile }
+
+private const val CONFIG_FILE = "vinity.properties"
+private const val API_KEY = "api.url"
+private const val DEFAULT_API = "http://localhost:8081"
 
 actual fun ByteArray.toImageBitmap(): ImageBitmap = Image.makeFromEncoded(this).toComposeImageBitmap()
 

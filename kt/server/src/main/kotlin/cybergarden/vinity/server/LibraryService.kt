@@ -55,6 +55,7 @@ class LibraryService(
     private val uploads: PdfUploads,
     private val normalizer: TextNormalizer,
     private val processing: ProcessingService,
+    private val web: Path?,
 ) {
     private class QueryResult(val catalog: ValueCatalog, val query: ValueQuery, val table: ValueTable)
 
@@ -234,7 +235,7 @@ class LibraryService(
         )
     }
 
-    fun webDistribution(): Path? = WEB_BUILDS.map { library.workspace.root.resolve(it) }
+    fun webDistribution(): Path? = web?.takeIf { it.isDirectory() } ?: WEB_BUILDS.map { library.workspace.root.resolve(it) }
         .filter { it.isDirectory() }
         .maxByOrNull { build -> build.listDirectoryEntries().maxOfOrNull { it.getLastModifiedTime().toMillis() } ?: 0L }
 

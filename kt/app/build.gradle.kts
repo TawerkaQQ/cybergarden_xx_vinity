@@ -1,3 +1,4 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
@@ -53,6 +54,12 @@ compose.resources {
 compose.desktop {
     application {
         mainClass = "cybergarden.vinity.app.MainKt"
+        nativeDistributions {
+            targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
+            packageName = "Vinity"
+            packageVersion = "1.0.0"
+            modules("java.prefs", "jdk.unsupported", "jdk.crypto.ec")
+        }
     }
 }
 
