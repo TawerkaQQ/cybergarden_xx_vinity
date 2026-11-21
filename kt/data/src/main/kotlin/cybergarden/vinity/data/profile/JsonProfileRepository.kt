@@ -21,6 +21,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
@@ -77,9 +81,16 @@ class JsonProfileRepository(private val directory: Path) : ProfileRepository {
             require(bounds.size == 2 && bounds[0] <= bounds[1]) { "Профиль $name: диапазон $metric должен быть [от, до]" }
             bounds[0]..bounds[1]
         },
-        checks = checks,
+        checks = checks.map { checkName(name, it) },
         display = display?.toSpec(name) ?: DisplaySpec(),
     )
+
+    private fun checkName(profile: String, check: JsonElement): String = when (check) {
+        is JsonPrimitive -> check.content
+        is JsonObject -> (check["name"] ?: check["rule"])?.jsonPrimitive?.content
+            ?: throw IllegalArgumentException("Профиль $profile: у проверки нет rule")
+        else -> throw IllegalArgumentException("Профиль $profile: проверка должна быть строкой или объектом с rule")
+    }
 
     private fun TableDocument.toSpec() = TableSpec(
         name = name,
@@ -139,7 +150,7 @@ class JsonProfileRepository(private val directory: Path) : ProfileRepository {
         val sources: SourcesDocument,
         val units: UnitsDocument = UnitsDocument(),
         val ranges: Map<String, List<Double>> = emptyMap(),
-        val checks: List<String> = emptyList(),
+        val checks: List<JsonElement> = emptyList(),
         val display: DisplayDocument? = null,
     )
 
