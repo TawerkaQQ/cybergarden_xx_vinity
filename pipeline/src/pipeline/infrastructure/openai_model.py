@@ -1,9 +1,12 @@
 import json
+import time
 from typing import Any
 
 import openai
 
 RETRY_TEMPERATURE_STEP = 0.3
+NETWORK_PAUSES_SECONDS = (15, 30, 60, 120)
+NETWORK_ERRORS = (openai.APIConnectionError, openai.InternalServerError)
 
 
 class ModelResponseError(Exception):
@@ -22,10 +25,18 @@ class OpenAiCompatibleModel:
         failures = []
         for attempt in range(self._attempts):
             try:
-                return self._request(system, user, schema, attempt * RETRY_TEMPERATURE_STEP)
+                return self._reachable_request(system, user, schema, attempt * RETRY_TEMPERATURE_STEP)
             except (ModelResponseError, json.JSONDecodeError) as error:
                 failures.append(f"{type(error).__name__}: {error}")
         raise ModelResponseError(" | ".join(failures))
+
+    def _reachable_request(self, system: str, user: str, schema: dict[str, Any], temperature: float) -> dict[str, Any]:
+        for pause in NETWORK_PAUSES_SECONDS:
+            try:
+                return self._request(system, user, schema, temperature)
+            except NETWORK_ERRORS:
+                time.sleep(pause)
+        return self._request(system, user, schema, temperature)
 
     def _request(self, system: str, user: str, schema: dict[str, Any], temperature: float) -> dict[str, Any]:
         stream = self._client.chat.completions.create(
