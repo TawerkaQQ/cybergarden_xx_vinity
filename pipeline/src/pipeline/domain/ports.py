@@ -3,6 +3,7 @@ from typing import Any, Protocol
 
 from pipeline.domain.article import Article
 from pipeline.domain.extract import ExtractResult
+from pipeline.domain.highlight import Highlight
 
 
 class ArticleReader(Protocol):
@@ -43,3 +44,15 @@ class TableStore(Protocol):
     def write(self, directory: Path, tables: dict[str, list[dict[str, str]]]) -> None: ...
 
     def read_values(self, directory: Path) -> list[dict[str, str]]: ...
+
+
+class PageGeometry(Protocol):
+    def page_sizes(self, publication_id: str) -> dict[int, tuple[float, float]]: ...
+
+    def locate(self, publication_id: str, page: int, fragment: str, value: str) -> Highlight | None: ...
+
+
+class ReportStore(Protocol):
+    def write(self, directory: Path, report: dict[str, Any]) -> None: ...
+
+    def read(self, directory: Path, publication_id: str) -> dict[str, Any]: ...
