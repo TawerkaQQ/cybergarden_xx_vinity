@@ -6,7 +6,6 @@ import openai
 
 RETRY_TEMPERATURE_STEP = 0.3
 NETWORK_PAUSES_SECONDS = (15, 30, 60, 120)
-NETWORK_ERRORS = (openai.APIConnectionError, openai.InternalServerError)
 
 
 class ModelResponseError(Exception):
@@ -34,7 +33,9 @@ class OpenAiCompatibleModel:
         for pause in NETWORK_PAUSES_SECONDS:
             try:
                 return self._request(system, user, schema, temperature)
-            except NETWORK_ERRORS:
+            except openai.APIError as error:
+                if not transient(error):
+                    raise
                 time.sleep(pause)
         return self._request(system, user, schema, temperature)
 
@@ -60,3 +61,7 @@ class OpenAiCompatibleModel:
         if finish_reason != "stop":
             raise ModelResponseError(f"finish_reason={finish_reason}")
         return json.loads("".join(parts))
+
+
+def transient(error: openai.APIError) -> bool:
+    return not isinstance(error, openai.APIStatusError) or error.status_code >= 500
