@@ -130,6 +130,18 @@ class ExtractionShape:
     def mentions_schema(self) -> dict[str, Any]:
         return strict_object({"mentions": {"type": "array", "items": self.mention.schema()}})
 
+    @staticmethod
+    def tables_schema() -> dict[str, Any]:
+        table = strict_object(
+            {
+                "table": STRING,
+                "page": {"type": "integer"},
+                "columns": {"type": "array", "items": STRING},
+                "rows": {"type": "array", "items": STRING},
+            }
+        )
+        return strict_object({"tables": {"type": "array", "items": table}})
+
     def result(
         self, publication_id: str, prompt_version: str, structure: dict[str, Any], mentions: dict[str, Any]
     ) -> ExtractResult:

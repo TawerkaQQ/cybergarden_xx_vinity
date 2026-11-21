@@ -6,7 +6,7 @@ from pipeline.domain.article import Article
 from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
 from pipeline.domain.profile import Table
 
-ENGINE_VERSION = "2"
+ENGINE_VERSION = "4"
 ROW_LABEL = "row_label"
 
 SYSTEM = """\
@@ -38,24 +38,45 @@ STRUCTURE_TASK = """\
 - records: все записи каждой таблицы, кроме упоминаний значений. Собери всё, что сравнивается в таблицах, на графиках и в тексте, и все условия, при которых получены значения. От этого зависит привязка значений во втором проходе.
 - Если in_scope=false — все списки в records пустые."""
 
+TABLES_TASK = """\
+Перечисли все таблицы статьи, в ячейках которых есть значения для mentions, включая таблицы сравнения с другими работами. Таблицы, где только составы, условия или параметры без таких значений, не включай.
+
+- table — обозначение таблицы ровно как в тексте статьи («Table 1», «TABLE II»). Таблицы, которых нет в тексте страниц (только в supplementary), не включай.
+- page — страница, на которой стоят строки таблицы.
+- columns — заголовки всех столбцов слева направо, как в статье, включая столбец с подписями строк и столбцы без показателей. Порядок важен: по нему числа строки сопоставляются со столбцами.
+- rows — подписи всех строк с данными сверху вниз, как в первой ячейке строки. Ни одной строки не пропускай."""
+
 MENTIONS_TASK = """\
 Проход B. Найди все упоминания значений во всей статье и привяжи их к записям прохода A (результат прохода A — в конце).
 
-- Каждое упоминание — отдельный элемент mentions: аннотация, текст, каждая ячейка с значением в каждой таблице, подписи к рисункам, числа, подписанные на рисунке. Повторы одного значения в разных местах не схлопывай: каждое место — свой элемент.
-- Таблицы выписывай целиком: каждую строку и каждый столбец с показателем. В таблице из R строк и C показателей — R×C элементов. Не останавливайся на первых строках.
+- Каждое упоминание — отдельный элемент mentions: аннотация, текст, каждая ячейка со значением в каждой таблице, подписи к рисункам, числа, подписанные на рисунке. Повторы одного значения в разных местах не схлопывай: каждое место — свой элемент.
+- Таблицы выписывай целиком: каждую строку и каждый столбец с показателем. Не останавливайся на первых строках.
+{rules}"""
+
+TABLE_TASK = """\
+Проход B, таблица {table} на странице {page}. Выпиши каждую ячейку этой таблицы со значением — только этой таблицы — и привяжи к записям прохода A (результат прохода A — в конце).
+
+- Столбцы слева направо: {columns}.
+- В тексте страницы строка таблицы — это подпись и числа подряд в порядке этих столбцов. Сопоставляй число со столбцом по позиции в строке, а не по смыслу. Прочерк занимает свою позицию; пустая ячейка в тексте не видна — если чисел меньше, чем столбцов, найди пропуск по смыслу соседних строк.
+- Строки сверху вниз ({row_count}): {rows}.
+- В каждой строке — каждый столбец с показателем, в котором есть число. Не останавливайся, пока не пройдёшь все строки до последней.
+- table — «{table}», page — {page}, figure — рисунок, если таблица к нему относится.
+{rules}"""
+
+MENTION_RULES = """\
 - Если в одной фразе несколько чисел («10% and 3.5%», «2.9% and 1.3%, respectively»), каждое число — отдельный элемент со своей привязкой и той же цитатой.
 - page — страница, на которой это число напечатано в тексте страниц (номер из маркера «=== Страница N ===» над ним). Не страница, где на таблицу или рисунок ссылаются. Для таблицы — страница, где стоят её строки.
 - section — заголовок раздела как в статье; table — обозначение таблицы как в статье («Table 1»), если значение из таблицы; figure — рисунок, к которому относится значение.
 - quote — дословный кусок текста страницы page с самим числом, 4–15 слов, в пределах одной строки этого текста: те же символы, пробелы, лигатуры и знаки минуса. Если фраза переносится на следующую строку, обрывай цитату в конце строки. Не склеивай переносы, не исправляй слова, без многоточий.{row_label}
 - metric — название показателя.{metrics}
-- raw_value — число как в статье, без единицы и без ±; raw_unit — единица рядом с числом как в статье; unit — только если единицы рядом нет, но она ясна из шкалы или заголовка (доля без единицы — fraction), иначе null.
+- raw_value — число ровно как напечатано в статье, со всеми цифрами и знаками после запятой, без округления, без единицы и без ±; raw_unit — единица рядом с числом как в статье; unit — только если единицы рядом нет, но она ясна из шкалы или заголовка (доля без единицы — fraction), иначе null.
 - origin — {origins}. Числа из чужих работ — введение, обсуждение, сравнение с литературой, рекорды, а также строки таблиц с результатами других работ (в строке или подписи стоит ссылка: «[26]», «Ref. 12») — origin=cited, cited — ссылка как в статье («[12]», «Bai et al., 2018»), refs — null.
 - status — {statuses}. Значение есть только в supplementary или только кривой без подписанного числа — raw_value=null, quote — фраза статьи, которая на него ссылается.
 - refs — key записей прохода A, к которым относится значение.
 - Не выписывай производные числа, если правила области не говорят иначе: разности и приросты («improves Voc of 0.127 V», «increased by 3.6%», «enhancement of 25%»), отношения, проценты изменения."""
 
 ROW_LABEL_RULE = " Для значения из таблицы quote пиши ровно так: «Table N, строка <подпись строки>» — обозначение таблицы как в статье, слово «строка» по-русски, подпись строки как в первой ячейке строки, без столбца."
-METRICS_RULE = " Оцениваемые показатели называй ровно так: {names}. Остальные — как в статье."
+METRICS_RULE = " Оцениваемые показатели называй ровно так: {names}. Имя оцениваемого показателя ставь, только если в статье именно эта величина; другие величины, даже похожие по смыслу или единице, называй как в статье."
 
 
 class PromptBook:
@@ -70,7 +91,8 @@ class PromptBook:
             rules=profile.rules.strip(),
         )
         self.structure_task = STRUCTURE_TASK
-        self.mentions_task = MENTIONS_TASK.format(
+        self.tables_task = TABLES_TASK
+        self.mention_rules = MENTION_RULES.format(
             row_label=ROW_LABEL_RULE if profile.table_fragment == ROW_LABEL else "",
             metrics=METRICS_RULE.format(names=", ".join(profile.values.metrics)) if profile.values.metrics else "",
             origins=self._choices("origin"),
@@ -81,9 +103,28 @@ class PromptBook:
     def structure_request(self, article: Article) -> str:
         return f"{article_text(article)}\n\n{self.structure_task}"
 
+    def tables_request(self, article: Article) -> str:
+        return f"{article_text(article)}\n\n{self.tables_task}"
+
+    def table_request(self, article: Article, structure: dict[str, Any], table: dict[str, Any]) -> str:
+        task = TABLE_TASK.format(
+            table=table["table"],
+            page=table["page"],
+            columns=" | ".join(table["columns"]),
+            rows="; ".join(table["rows"]),
+            row_count=len(table["rows"]),
+            rules=self.mention_rules,
+        )
+        return self._with_structure(article, task, structure)
+
     def mentions_request(self, article: Article, structure: dict[str, Any]) -> str:
+        task = MENTIONS_TASK.format(rules=self.mention_rules)
+        return self._with_structure(article, task, structure)
+
+    @staticmethod
+    def _with_structure(article: Article, task: str, structure: dict[str, Any]) -> str:
         passed = json.dumps(structure, ensure_ascii=False, indent=1)
-        return f"{article_text(article)}\n\n{self.mentions_task}\n\nРезультат прохода A:\n{passed}"
+        return f"{article_text(article)}\n\n{task}\n\nРезультат прохода A:\n{passed}"
 
     def _guide(self) -> str:
         shape = self._shape
@@ -120,7 +161,10 @@ class PromptBook:
 
     def _digest(self) -> str:
         payload = json.dumps(
-            [self.system, self.structure_task, self.mentions_task, self._shape.structure_schema(), self._shape.mentions_schema()],
+            [
+                self.system, self.structure_task, self.tables_task, MENTIONS_TASK, TABLE_TASK, self.mention_rules,
+                self._shape.structure_schema(), self._shape.tables_schema(), self._shape.mentions_schema(),
+            ],
             ensure_ascii=False,
         )
         return hashlib.sha256(payload.encode()).hexdigest()[:8]
