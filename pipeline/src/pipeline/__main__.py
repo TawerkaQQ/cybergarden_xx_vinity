@@ -6,6 +6,7 @@ from pathlib import Path
 import openai
 
 from pipeline.application.build_pages import BuildPages
+from pipeline.application.check_set import CheckSet
 from pipeline.application.extract_article import ExtractArticle
 from pipeline.application.folder import article_pdfs
 from pipeline.application.process_article import ProcessArticle
@@ -14,6 +15,7 @@ from pipeline.application.profile_extraction import ProfileExtraction
 from pipeline.application.publish_set import PublishSet
 from pipeline.application.score_set import ScoreSet
 from pipeline.domain.assembly import Assembler
+from pipeline.domain.checks import Checker
 from pipeline.domain.extraction_shape import ExtractionShape
 from pipeline.domain.prompts import PromptBook
 from pipeline.domain.scoring import Score, Scorer
@@ -43,7 +45,10 @@ def parse_args() -> argparse.Namespace:
     run = commands.add_parser("run", help="вся цепочка: pages, extract, assemble и score, если есть эталон")
     article = commands.add_parser("article", help="одна статья: текст, извлечение, сборка набора её папки, JSON статьи")
     article.add_argument("pdf", type=Path)
-    for command in (pages, extract, assemble, score, run, article):
+    check = commands.add_parser("check", help="проверки достоверности по таблицам папки, issues.csv в --out")
+    check.add_argument("tables", type=Path)
+    check.add_argument("--out", type=Path, required=True)
+    for command in (pages, extract, assemble, score, run, article, check):
         command.add_argument("--profile", required=True)
         command.add_argument("--work", type=Path, default=Path("work"))
         command.add_argument("--profiles", type=Path, default=Path("profiles"))
@@ -94,6 +99,7 @@ def build_publish(args: argparse.Namespace, shape: ExtractionShape, pdfs: list[P
     return PublishSet(
         shape.profile,
         Assembler(shape),
+        Checker(shape.profile),
         WorkFiles(args.work / args.profile),
         CsvTables(shape.profile),
         PyMuPdfGeometry({pdf.stem: pdf for pdf in pdfs}),
@@ -168,6 +174,14 @@ def run_article(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_check(args: argparse.Namespace) -> int:
+    profile = load_profile(args.profiles, args.profile)
+    issues, report = CheckSet(Checker(profile), CsvTables(profile))(args.tables, args.out)
+    print(f"{args.out / 'issues.csv'}: замечаний {len(issues)}")
+    print("  " + ", ".join(f"{name} {count}" for name, count in report.items()))
+    return 0
+
+
 def format_score(score: Score) -> str:
     return (
         f"точность {score.precision:6.1%} ({score.matched}/{score.ours}), "
@@ -190,7 +204,7 @@ def slug(text: str) -> str:
 
 def main() -> int:
     args = parse_args()
-    commands = {"pages": run_pages, "extract": run_extract, "assemble": run_assemble, "score": run_score, "run": run_all, "article": run_article}
+    commands = {"pages": run_pages, "extract": run_extract, "assemble": run_assemble, "score": run_score, "run": run_all, "article": run_article, "check": run_check}
     return commands[args.command](args)
 
 

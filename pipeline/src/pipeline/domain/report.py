@@ -11,6 +11,7 @@ def article_report(
     tables: dict[str, list[dict[str, str]]],
     highlights: dict[str, Highlight],
     page_sizes: dict[int, tuple[float, float]],
+    issues: list[dict[str, str]],
 ) -> dict[str, Any]:
     return {
         "publication_id": publication_id,
@@ -21,4 +22,5 @@ def article_report(
             name: [row for row in rows if row[PUBLICATION_ID] == publication_id] for name, rows in tables.items()
         },
         "highlights": {result_id: highlight.to_json() for result_id, highlight in highlights.items()},
+        "issues": [issue for issue in issues if issue[PUBLICATION_ID] == publication_id],
     }
