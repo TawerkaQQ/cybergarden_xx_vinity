@@ -1,0 +1,11 @@
+[project]
+name = "cybergarden-xx-vinity"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=3.57.0",
+    "pymupdf>=1.28.2",
+    "pypdf>=7.1.1",
+]
