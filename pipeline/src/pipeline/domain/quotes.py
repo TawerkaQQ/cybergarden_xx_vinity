@@ -59,9 +59,9 @@ class QuoteLocator:
     def table_page(self, table: str, row_label: str, page: int | None) -> int | None:
         caption = re.compile(rf"(?im)^\s*{re.escape(collapse(table))}\b")
         captions = [number for number, text in self._texts() if caption.search(text)]
-        label = collapse(row_label).lower()
+        label = re.compile(rf"(?<!\w){re.escape(collapse(row_label))}(?!\w)", re.IGNORECASE) if row_label.strip() else None
         continued = sorted(set(captions) | {number + 1 for number in captions} & set(self._pages))
-        with_label = [number for number in continued if label and label in collapse(self._pages[number].text).lower()]
+        with_label = [number for number in continued if label and label.search(collapse(self._pages[number].text))]
         candidates = with_label or captions
         if not candidates:
             return page
