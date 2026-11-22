@@ -10,7 +10,16 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.io.path.exists
 
-class RagSettings(val python: Path?, val baseUrl: String?, val model: String?, val apiKey: String?, val qdrant: String?)
+class RagSettings(
+    val python: Path?,
+    val baseUrl: String?,
+    val model: String?,
+    val apiKey: String?,
+    val qdrant: String?,
+    val timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
+)
+
+const val DEFAULT_TIMEOUT_SECONDS = 120L
 
 /** Запускает модуль поиска `rag/api.py` на каждый запрос и читает его ответ в JSON. */
 class RagProcess(private val root: Path, private val settings: RagSettings) {
@@ -28,9 +37,9 @@ class RagProcess(private val root: Path, private val settings: RagSettings) {
 
     fun status(): JsonObject = run(listOf("status"), null, STATUS_SECONDS)
 
-    fun ask(request: JsonObject): JsonObject = run(listOf("ask"), request, ANSWER_SECONDS)
+    fun ask(request: JsonObject): JsonObject = run(listOf("ask"), request, settings.timeoutSeconds)
 
-    fun web(request: JsonObject): JsonObject = run(listOf("web"), request, ANSWER_SECONDS)
+    fun web(request: JsonObject): JsonObject = run(listOf("web"), request, settings.timeoutSeconds)
 
     private fun run(arguments: List<String>, input: JsonObject?, seconds: Long): JsonObject {
         problem?.let { error(it) }
@@ -53,8 +62,9 @@ class RagProcess(private val root: Path, private val settings: RagSettings) {
         }
         process.outputStream.use { stream -> input?.let { stream.write(it.toString().toByteArray(Charsets.UTF_8)) } }
         if (!process.waitFor(seconds, TimeUnit.SECONDS)) {
+            process.descendants().forEach { it.destroyForcibly() }
             process.destroyForcibly()
-            error("модуль RAG не ответил за $seconds с")
+            error("модуль RAG не ответил за $seconds с: модель или поиск отвечают слишком долго")
         }
         reader.join(JOIN_MILLIS)
         errorReader.join(JOIN_MILLIS)
@@ -82,7 +92,6 @@ class RagProcess(private val root: Path, private val settings: RagSettings) {
         private const val NO_KEY = "EMPTY"
         private const val NO_THINKING = """{"chat_template_kwargs":{"enable_thinking":false}}"""
         private const val STATUS_SECONDS = 60L
-        private const val ANSWER_SECONDS = 240L
         private const val JOIN_MILLIS = 2_000L
         private const val ERROR_LINES = 20
 

@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from config import collection_name, get_chat_settings, get_qdrant_url
+from config import collection_name, get_chat_settings, get_qdrant_url, get_searxng_url
 from evidence import publication_ids
 
 
@@ -32,13 +32,21 @@ def main() -> None:
             else:
                 result = answer_from_web(question, args.phrase or list(request.get("phrases") or []))
     except Exception as error:  # сервер показывает текст ошибки пользователю
-        emit({"error": str(error) or type(error).__name__})
+        emit({"error": describe(error)})
         sys.exit(1)
     emit(result)
 
 
 def status() -> dict:
-    result: dict = {"qdrant": None, "collections": {}, "problems": []}
+    from vectors import embedding_profile
+
+    result: dict = {
+        "qdrant": None,
+        "collections": {},
+        "problems": [],
+        "embedding": embedding_profile(),
+        "web_search": "SearXNG" if get_searxng_url() else "DuckDuckGo",
+    }
     try:
         settings = get_chat_settings()
         result["model"] = settings.profile
@@ -88,17 +96,26 @@ def answer_from_base(question: str, csv_corpus: bool, top_k: int | None) -> dict
 def answer_from_web(question: str, phrases: list[str]) -> dict:
     if not question:
         raise ValueError("Введите вопрос")
-    from generation import generate_web, search_terms
+    from generation import generate_web
     from web_search import find_web_passages
 
     if not phrases:
-        phrases = [line.strip() for line in search_terms(question).splitlines() if line.strip()]
+        # без фраз из ответа по базе ищем по самому вопросу: лишний вызов модели только удлиняет ожидание
+        phrases = [question]
     answer, cited = generate_web(question, find_web_passages(question, phrases))
     sources = [
         {"number": number, "title": passage.title, "url": passage.url, "fetched_at": passage.fetched_at, "text": passage.text}
         for number, passage in cited.items()
     ]
     return {"answer": answer, "sources": sources}
+
+
+def describe(error: BaseException) -> str:
+    message = str(error) or type(error).__name__
+    cause = error.__cause__ or error.__context__
+    if cause is not None and str(cause) and str(cause) not in message:
+        message += f" ({type(cause).__name__}: {cause})"
+    return message
 
 
 def emit(payload: dict) -> None:

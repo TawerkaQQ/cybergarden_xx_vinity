@@ -56,6 +56,7 @@ if (-not (Test-Path $config)) {
         "rag.url=$($local['rag.url'])",
         "rag.python=$($local['rag.python'])",
         "rag.qdrant=$($local['rag.qdrant'])",
+        'rag.timeout=120',
         'python='
     )
 }

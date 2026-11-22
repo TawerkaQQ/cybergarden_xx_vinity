@@ -477,6 +477,8 @@ data class RagStatusDto(
     val pdfFragments: Long?,
     val csvFragments: Long?,
     val problems: List<String>,
+    val embedding: String? = null,
+    val webSearch: String? = null,
 )
 
 @Serializable

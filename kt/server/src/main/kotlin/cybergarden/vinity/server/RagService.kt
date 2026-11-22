@@ -54,7 +54,16 @@ class RagService(private val process: RagProcess, private val file: Path) {
                 val pdf = collections?.get("pdf")?.let { (it as? JsonPrimitive)?.longOrNull }
                 val csv = collections?.get("csv")?.let { (it as? JsonPrimitive)?.longOrNull }
                 val empty = if (problems.isEmpty() && pdf == null && csv == null) listOf("В базе нет индексов: создайте их командой index.py") else emptyList()
-                RagStatusDto(problems.isEmpty(), payload["model"]?.text() ?: process.model, payload["qdrant"]?.text(), pdf, csv, problems + empty)
+                RagStatusDto(
+                    ready = problems.isEmpty() && empty.isEmpty(),
+                    model = payload["model"]?.text() ?: process.model,
+                    qdrant = payload["qdrant"]?.text(),
+                    pdfFragments = pdf,
+                    csvFragments = csv,
+                    problems = problems + empty,
+                    embedding = payload["embedding"]?.text(),
+                    webSearch = payload["web_search"]?.text(),
+                )
             },
             onFailure = { failure -> RagStatusDto(false, process.model, null, null, null, listOf(failure.message ?: failure::class.simpleName.orEmpty())) },
         )

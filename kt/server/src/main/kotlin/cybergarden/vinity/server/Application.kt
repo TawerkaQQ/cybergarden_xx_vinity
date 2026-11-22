@@ -15,6 +15,7 @@ import cybergarden.vinity.data.pdf.PdfBoxPageRenderer
 import cybergarden.vinity.data.pdf.PdfUploads
 import cybergarden.vinity.data.pipeline.PipelineProcess
 import cybergarden.vinity.data.pipeline.PipelineSettings
+import cybergarden.vinity.data.rag.DEFAULT_TIMEOUT_SECONDS
 import cybergarden.vinity.data.rag.RagProcess
 import cybergarden.vinity.data.rag.RagSettings
 import cybergarden.vinity.data.provenance.ProvenanceReader
@@ -48,7 +49,7 @@ fun main() {
     val chat = settings.baseUrl?.let { url -> settings.model?.let { ChatModel(url, it, settings.apiKey) } }
     val pages = { ref: SetRef -> FallbackPageTextSource(JsonPageTextSource(workspace.pages(ref.profile)), PdfPageTextSource(inspector) { library.pdf(ref, it) }) }
     val questions = AskService(library, pages, chat, config.value("rag.url", "RAG_URL")?.let(::RemoteRag))
-    val ragSettings = RagSettings(config.value("rag.python")?.let { Path.of(it) } ?: RagProcess.defaultPython(root), settings.baseUrl, settings.model, settings.apiKey, config.value("rag.qdrant", "QDRANT_URL"))
+    val ragSettings = RagSettings(config.value("rag.python")?.let { Path.of(it) } ?: RagProcess.defaultPython(root), settings.baseUrl, settings.model, settings.apiKey, config.value("rag.qdrant", "QDRANT_URL"), config.value("rag.timeout")?.toLongOrNull()?.takeIf { it > 0 } ?: DEFAULT_TIMEOUT_SECONDS)
     val rag = RagService(RagProcess(root, ragSettings), root.resolve("work").resolve("rag-chat").resolve("history.json"))
     println("Vinity: http://localhost:$port · данные $root · конфиг ${config.source ?: "не задан"} · модель ${settings.model ?: "не настроена"}")
     insights.warmUp()

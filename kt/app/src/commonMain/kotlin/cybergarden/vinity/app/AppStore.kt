@@ -182,6 +182,8 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     var ragStatusLoading by mutableStateOf(false)
         private set
     private var ragLoaded = false
+    private var ragJob: Job? = null
+    private val ragWebJobs = mutableMapOf<String, Job>()
     private var articlesScreen = AppScreen.ARTICLES
     var qualityTab by mutableStateOf(QualityTab.EXTRACT)
         private set
@@ -280,14 +282,14 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         if (asked.isEmpty() || ragAsking != null) return
         ragQuestion = ""
         ragAsking = asked
-        scope.launch {
+        ragJob = scope.launch {
             try {
                 val exchange = client.ragAsk(RagAskDto(asked, ragCsv, ragTopK, ragWeb))
                 ragHistory += exchange
                 focusRag(exchange.id)
                 error = null
                 if (exchange.base?.problem != null) ragStatus = client.ragStatus(refresh = true)
-                if (exchange.webPending) scope.launch { loadRagWeb(exchange.id) }
+                if (exchange.webPending) searchWeb(exchange.id)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -308,7 +310,20 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     }
 
     fun searchWeb(id: String) {
-        scope.launch { loadRagWeb(id) }
+        if (ragWebJobs[id]?.isActive == true) return
+        ragWebJobs[id] = scope.launch { loadRagWeb(id) }
+    }
+
+    fun cancelRag() {
+        val asked = ragAsking ?: return
+        ragJob?.cancel()
+        ragAsking = null
+        if (ragQuestion.isBlank()) ragQuestion = asked
+    }
+
+    fun cancelWeb(id: String) {
+        ragWebJobs.remove(id)?.cancel()
+        ragWebLoading -= id
     }
 
     fun focusRag(id: String) {
@@ -347,6 +362,7 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
             error = describe(failure)
         } finally {
             ragWebLoading -= id
+            ragWebJobs.remove(id)
         }
     }
 
