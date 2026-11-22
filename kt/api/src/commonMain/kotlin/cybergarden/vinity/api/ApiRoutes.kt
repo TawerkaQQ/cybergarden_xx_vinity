@@ -21,6 +21,7 @@ object ApiRoutes {
     const val DOWNLOAD_PARAMETER = "download"
     const val OFFSET_PARAMETER = "offset"
     const val LIMIT_PARAMETER = "limit"
+    const val EXCHANGE_PARAMETER = "exchange"
     const val FILE_PART = "file"
     const val HIGHLIGHT_HEADER = "X-Highlight"
 
@@ -43,6 +44,12 @@ object ApiRoutes {
     const val COMPARISON = "$ARTICLE/comparison"
     const val PAGE = "$ARTICLE/pages/{$PAGE_PARAMETER}"
     const val PROCESS = "$ARTICLE/process"
+    const val RAG = "/api/rag"
+    const val RAG_STATUS = "$RAG/status"
+    const val RAG_HISTORY = "$RAG/history"
+    const val RAG_CLEAR = "$RAG_HISTORY/clear"
+    const val RAG_ASK = "$RAG/ask"
+    const val RAG_WEB = "$RAG_HISTORY/{$EXCHANGE_PARAMETER}/web"
 
     fun uploads(profile: String) = "$PROFILES/$profile/uploads"
     fun set(ref: SetRef) = "$SETS/${ref.path}"
@@ -59,6 +66,7 @@ object ApiRoutes {
     fun comparison(ref: SetRef, id: String) = "${article(ref, id)}/comparison"
     fun page(ref: SetRef, id: String, page: Int) = "${article(ref, id)}/pages/$page"
     fun process(ref: SetRef, id: String) = "${article(ref, id)}/process"
+    fun ragWeb(id: String) = "$RAG_HISTORY/$id/web"
 }
 
 data class HighlightBox(

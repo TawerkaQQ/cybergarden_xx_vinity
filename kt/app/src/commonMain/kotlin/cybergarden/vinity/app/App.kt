@@ -48,6 +48,7 @@ import cybergarden.vinity.app.ui.LocalScrollTop
 import cybergarden.vinity.app.ui.LocalWidth
 import cybergarden.vinity.app.ui.OverviewScreen
 import cybergarden.vinity.app.ui.QualityScreen
+import cybergarden.vinity.app.ui.RagScreen
 import cybergarden.vinity.app.ui.R8
 import cybergarden.vinity.app.ui.Spinner
 import cybergarden.vinity.app.ui.T
@@ -102,7 +103,7 @@ private fun Content(store: AppStore, width: Width) {
 
 @Composable
 private fun Screen(store: AppStore) {
-    if (store.set == null && store.screen != AppScreen.AREAS) {
+    if (store.set == null && store.screen != AppScreen.AREAS && store.screen != AppScreen.RAG) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Spinner(size = 24.dp) }
         return
     }
@@ -114,6 +115,7 @@ private fun Screen(store: AppStore) {
         AppScreen.QUALITY -> QualityScreen(store)
         AppScreen.AREAS -> AreasScreen(store)
         AppScreen.ASK -> AskScreen(store)
+        AppScreen.RAG -> RagScreen(store)
     }
 }
 

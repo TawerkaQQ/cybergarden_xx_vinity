@@ -141,3 +141,7 @@ actual fun Modifier.resizeCursor(): Modifier = pointerInput(Unit) {
 private const val CANVAS = "body > canvas"
 private const val RESIZE_CURSOR = "col-resize"
 private const val DEFAULT_CURSOR = "default"
+
+actual fun openUrl(url: String) {
+    window.open(url, "_blank", "noopener")
+}

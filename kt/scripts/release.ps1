@@ -54,6 +54,8 @@ if (-not (Test-Path $config)) {
         "model.name=$($local['model.name'])",
         "model.key=$($local['model.key'])",
         "rag.url=$($local['rag.url'])",
+        "rag.python=$($local['rag.python'])",
+        "rag.qdrant=$($local['rag.qdrant'])",
         'python='
     )
 }

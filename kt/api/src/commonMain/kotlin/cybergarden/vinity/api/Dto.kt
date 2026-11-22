@@ -468,3 +468,47 @@ data class AnswerSourceDto(
     val valueId: String?,
     val cited: Boolean,
 )
+
+@Serializable
+data class RagStatusDto(
+    val ready: Boolean,
+    val model: String?,
+    val qdrant: String?,
+    val pdfFragments: Long?,
+    val csvFragments: Long?,
+    val problems: List<String>,
+)
+
+@Serializable
+data class RagAskDto(val question: String, val csv: Boolean, val topK: Int?, val web: Boolean)
+
+@Serializable
+data class RagExchangeDto(
+    val id: String,
+    val askedAt: String,
+    val askedLabel: String,
+    val question: String,
+    val csv: Boolean,
+    val topK: Int?,
+    val web: Boolean,
+    val phrases: List<String> = emptyList(),
+    val base: RagPartDto? = null,
+    val internet: RagPartDto? = null,
+) {
+    val webPending: Boolean get() = web && internet == null
+}
+
+@Serializable
+data class RagPartDto(val answer: String?, val problem: String?, val sources: List<RagSourceDto> = emptyList())
+
+@Serializable
+data class RagSourceDto(
+    val number: Int,
+    val reference: String,
+    val text: String,
+    val page: Int? = null,
+    val publicationId: String? = null,
+    val title: String? = null,
+    val url: String? = null,
+    val fetchedAt: String? = null,
+)

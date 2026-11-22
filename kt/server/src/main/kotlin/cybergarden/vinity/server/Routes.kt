@@ -5,6 +5,7 @@ import cybergarden.vinity.api.AskRequestDto
 import cybergarden.vinity.api.HighlightBox
 import cybergarden.vinity.api.IssueReviewRequestDto
 import cybergarden.vinity.api.PageRequestDto
+import cybergarden.vinity.api.RagAskDto
 import cybergarden.vinity.api.ReviewFilterDto
 import cybergarden.vinity.api.SetRef
 import cybergarden.vinity.api.SourceDto
@@ -36,7 +37,31 @@ import io.ktor.utils.io.toByteArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-fun Route.vinityRoutes(library: LibraryService, insights: InsightService, passports: PassportService, questions: AskService) {
+fun Route.vinityRoutes(library: LibraryService, insights: InsightService, passports: PassportService, questions: AskService, rag: RagService) {
+    get(ApiRoutes.RAG_STATUS) {
+        call.respond(withContext(Dispatchers.IO) { rag.status(call.flag("refresh")) })
+    }
+
+    get(ApiRoutes.RAG_HISTORY) {
+        call.respond(withContext(Dispatchers.IO) { rag.history() })
+    }
+
+    post(ApiRoutes.RAG_ASK) {
+        val request = call.receive<RagAskDto>()
+        if (request.question.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, "Вопрос пустой")
+        call.respond(withContext(Dispatchers.IO) { rag.ask(request) })
+    }
+
+    post(ApiRoutes.RAG_WEB) {
+        val id = call.parameters[ApiRoutes.EXCHANGE_PARAMETER].orEmpty()
+        call.respondOrNotFound(withContext(Dispatchers.IO) { rag.web(id) })
+    }
+
+    post(ApiRoutes.RAG_CLEAR) {
+        withContext(Dispatchers.IO) { rag.clear() }
+        call.respond(HttpStatusCode.NoContent)
+    }
+
     get(ApiRoutes.PROFILES) {
         call.respond(library.profiles())
     }

@@ -38,25 +38,43 @@ import cybergarden.vinity.app.AppStore
 @Composable
 fun TopBar(store: AppStore) {
     val width = LocalWidth.current
-    val inline = width == Width.WIDE || width == Width.NARROW
     val phone = width == Width.PHONE
+    val rag = store.screen == AppScreen.RAG
     Column(Modifier.fillMaxWidth().background(C.surface)) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = if (inline) 0.dp else 6.dp),
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(if (phone) 8.dp else 16.dp),
         ) {
             Brand(store)
-            SetPicker(store, Modifier)
-            if (inline) MainTabs(store, Modifier)
+            ModeTabs(store)
+            if (!rag && !phone) SetPicker(store, Modifier)
             Spacer(Modifier.weight(1f))
-            UploadChip(store)
+            if (!rag) UploadChip(store)
             ThemeSwitch(store)
-            if (phone) SquareButton(Glyph.PLUS, "Загрузить PDF", store::pickArticles) else PrimaryButton("Загрузить PDF", store::pickArticles, glyph = Glyph.PLUS)
+            if (!rag) {
+                if (phone) SquareButton(Glyph.PLUS, "Загрузить PDF", store::pickArticles) else PrimaryButton("Загрузить PDF", store::pickArticles, glyph = Glyph.PLUS)
+            }
         }
-        if (!inline) MainTabs(store, Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+        if (!rag) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(C.divider))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (phone) SetPicker(store, Modifier.padding(start = 12.dp, end = 4.dp))
+                MainTabs(store, Modifier.weight(1f))
+            }
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(C.divider))
     }
+}
+
+@Composable
+private fun ModeTabs(store: AppStore) {
+    val mode = if (store.screen == AppScreen.RAG) AppScreen.RAG else AppScreen.ARTICLES
+    Segmented(
+        listOf(AppScreen.ARTICLES to "Статьи", AppScreen.RAG to "RAG-система"),
+        mode,
+        { target -> if (target == AppScreen.RAG) store.openRag() else if (mode == AppScreen.RAG) store.openArticlesMode() },
+    )
 }
 
 @Composable
@@ -91,7 +109,7 @@ private fun MainTabs(store: AppStore, modifier: Modifier) {
         TabSpec(AppScreen.QUALITY, "Качество"),
         TabSpec(AppScreen.AREAS, "Области"),
     )
-    UnderlineTabs(tabs, selected, store::openScreen, modifier, vertical = if (LocalWidth.current == Width.WIDE || LocalWidth.current == Width.NARROW) 17.dp else 8.dp)
+    UnderlineTabs(tabs, selected, store::openScreen, modifier, vertical = if (LocalWidth.current == Width.PHONE) 8.dp else 12.dp)
 }
 
 @Composable

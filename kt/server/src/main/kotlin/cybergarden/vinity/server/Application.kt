@@ -15,6 +15,8 @@ import cybergarden.vinity.data.pdf.PdfBoxPageRenderer
 import cybergarden.vinity.data.pdf.PdfUploads
 import cybergarden.vinity.data.pipeline.PipelineProcess
 import cybergarden.vinity.data.pipeline.PipelineSettings
+import cybergarden.vinity.data.rag.RagProcess
+import cybergarden.vinity.data.rag.RagSettings
 import cybergarden.vinity.data.provenance.ProvenanceReader
 import cybergarden.vinity.data.review.JsonReviewRepository
 import cybergarden.vinity.data.text.QuoteNormalizer
@@ -46,9 +48,11 @@ fun main() {
     val chat = settings.baseUrl?.let { url -> settings.model?.let { ChatModel(url, it, settings.apiKey) } }
     val pages = { ref: SetRef -> FallbackPageTextSource(JsonPageTextSource(workspace.pages(ref.profile)), PdfPageTextSource(inspector) { library.pdf(ref, it) }) }
     val questions = AskService(library, pages, chat, config.value("rag.url", "RAG_URL")?.let(::RemoteRag))
+    val ragSettings = RagSettings(config.value("rag.python")?.let { Path.of(it) } ?: RagProcess.defaultPython(root), settings.baseUrl, settings.model, settings.apiKey, config.value("rag.qdrant", "QDRANT_URL"))
+    val rag = RagService(RagProcess(root, ragSettings), root.resolve("work").resolve("rag").resolve("history.json"))
     println("Vinity: http://localhost:$port · данные $root · конфиг ${config.source ?: "не задан"} · модель ${settings.model ?: "не настроена"}")
     insights.warmUp()
-    embeddedServer(Netty, port = port) { vinity(service, insights, passports, questions) }.start(wait = true)
+    embeddedServer(Netty, port = port) { vinity(service, insights, passports, questions, rag) }.start(wait = true)
 }
 
 private fun pipelineSettings(root: Path, config: ServerConfig): PipelineSettings {
@@ -66,7 +70,7 @@ private fun pipelineSettings(root: Path, config: ServerConfig): PipelineSettings
 private const val DEFAULT_PORT = 8081
 private const val DEFAULT_WORKERS = 4
 
-fun Application.vinity(service: LibraryService, insights: InsightService, passports: PassportService, questions: AskService) {
+fun Application.vinity(service: LibraryService, insights: InsightService, passports: PassportService, questions: AskService, rag: RagService) {
     install(ContentNegotiation) {
         json()
     }
@@ -78,6 +82,6 @@ fun Application.vinity(service: LibraryService, insights: InsightService, passpo
         exposeHeader(ApiRoutes.HIGHLIGHT_HEADER)
     }
     routing {
-        vinityRoutes(service, insights, passports, questions)
+        vinityRoutes(service, insights, passports, questions, rag)
     }
 }

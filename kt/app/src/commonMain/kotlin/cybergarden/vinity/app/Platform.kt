@@ -35,3 +35,5 @@ expect fun loadSetting(key: String): String?
 expect fun saveSetting(key: String, value: String?)
 
 expect fun Modifier.resizeCursor(): Modifier
+
+expect fun openUrl(url: String)

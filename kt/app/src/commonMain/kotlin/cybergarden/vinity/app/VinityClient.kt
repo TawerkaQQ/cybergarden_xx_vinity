@@ -5,6 +5,9 @@ import cybergarden.vinity.api.AnswerDto
 import cybergarden.vinity.api.ApiRoutes
 import cybergarden.vinity.api.ArticleDto
 import cybergarden.vinity.api.AskRequestDto
+import cybergarden.vinity.api.RagAskDto
+import cybergarden.vinity.api.RagExchangeDto
+import cybergarden.vinity.api.RagStatusDto
 import cybergarden.vinity.api.ComparisonDto
 import cybergarden.vinity.api.DemoCaseDto
 import cybergarden.vinity.api.HighlightBox
@@ -28,6 +31,7 @@ import cybergarden.vinity.api.ValueKindDto
 import cybergarden.vinity.api.ValueReviewRequestDto
 import cybergarden.vinity.api.ValueSortDto
 import cybergarden.vinity.api.ValueTableDto
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -57,12 +61,18 @@ data class ValueFilter(
 
 class PageImage(val bitmap: ImageBitmap, val boxes: List<HighlightBox>)
 
+private const val LONG_REQUEST_MILLIS = 300_000L
+
 class VinityClient(val baseUrl: String) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
     private val http = HttpClient {
         install(ContentNegotiation) { json(json) }
+        install(HttpTimeout) {
+            requestTimeoutMillis = LONG_REQUEST_MILLIS
+            socketTimeoutMillis = LONG_REQUEST_MILLIS
+        }
     }
 
     suspend fun profiles(): List<ProfileDto> = http.get(baseUrl + ApiRoutes.PROFILES).body()
@@ -131,6 +141,28 @@ class VinityClient(val baseUrl: String) {
         }
         check(response.status.isSuccess()) { "сервер ответил ${response.status}" }
         return response.body()
+    }
+
+    suspend fun ragStatus(refresh: Boolean): RagStatusDto =
+        http.get(baseUrl + ApiRoutes.RAG_STATUS) { parameter("refresh", refresh) }.body()
+
+    suspend fun ragHistory(): List<RagExchangeDto> = http.get(baseUrl + ApiRoutes.RAG_HISTORY).body()
+
+    suspend fun ragAsk(request: RagAskDto): RagExchangeDto {
+        val response = http.post(baseUrl + ApiRoutes.RAG_ASK) {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        check(response.status.isSuccess()) { "сервер ответил ${response.status}" }
+        return response.body()
+    }
+
+    suspend fun ragWeb(id: String): RagExchangeDto? =
+        http.post(baseUrl + ApiRoutes.ragWeb(id)).takeIf { it.status.isSuccess() }?.body()
+
+    suspend fun ragClear() {
+        val response = http.post(baseUrl + ApiRoutes.RAG_CLEAR)
+        check(response.status.isSuccess()) { "сервер ответил ${response.status}" }
     }
 
     suspend fun overview(ref: SetRef, source: SourceDto?): OverviewDto? =

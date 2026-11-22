@@ -8,6 +8,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cybergarden.vinity.api.AnswerDto
+import cybergarden.vinity.api.RagAskDto
+import cybergarden.vinity.api.RagExchangeDto
+import cybergarden.vinity.api.RagStatusDto
 import cybergarden.vinity.api.AppRoute
 import cybergarden.vinity.api.AppScreen
 import cybergarden.vinity.api.ArticleDto
@@ -159,6 +162,27 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
         private set
     var otherSourcesOpen by mutableStateOf(false)
     private var askJob: Job? = null
+
+    var ragStatus by mutableStateOf<RagStatusDto?>(null)
+        private set
+    val ragHistory = mutableStateListOf<RagExchangeDto>()
+    var ragQuestion by mutableStateOf("")
+    var ragCsv by mutableStateOf(false)
+    var ragWeb by mutableStateOf(true)
+    var ragTopK by mutableStateOf<Int?>(null)
+    var ragAsking by mutableStateOf<String?>(null)
+        private set
+    val ragWebLoading = mutableStateListOf<String>()
+    var ragFocus by mutableStateOf<String?>(null)
+        private set
+    var ragFocusRequests by mutableIntStateOf(0)
+        private set
+    var ragHistoryOpen by mutableStateOf(false)
+    var ragConfirmClear by mutableStateOf(false)
+    var ragStatusLoading by mutableStateOf(false)
+        private set
+    private var ragLoaded = false
+    private var articlesScreen = AppScreen.ARTICLES
     var qualityTab by mutableStateOf(QualityTab.EXTRACT)
         private set
     var overview by mutableStateOf<OverviewDto?>(null)
@@ -232,6 +256,99 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     }
 
     fun goHome() = openScreen(AppScreen.ARTICLES)
+
+    fun openRag() = navigate {
+        if (screen != AppScreen.RAG) articlesScreen = screen
+        evidence = null
+        screen = AppScreen.RAG
+        loadScreenData()
+    }
+
+    fun openArticlesMode() = openScreen(if (articlesScreen == AppScreen.ARTICLE && articleId == null) AppScreen.ARTICLES else articlesScreen)
+
+    fun refreshRagStatus() = request {
+        ragStatusLoading = true
+        try {
+            ragStatus = client.ragStatus(refresh = true)
+        } finally {
+            ragStatusLoading = false
+        }
+    }
+
+    fun askRag(text: String = ragQuestion) {
+        val asked = text.trim()
+        if (asked.isEmpty() || ragAsking != null) return
+        ragQuestion = ""
+        ragAsking = asked
+        scope.launch {
+            try {
+                val exchange = client.ragAsk(RagAskDto(asked, ragCsv, ragTopK, ragWeb))
+                ragHistory += exchange
+                focusRag(exchange.id)
+                error = null
+                if (exchange.base?.problem != null) ragStatus = client.ragStatus(refresh = true)
+                if (exchange.webPending) scope.launch { loadRagWeb(exchange.id) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error = describe(failure)
+                ragQuestion = asked
+            } finally {
+                ragAsking = null
+            }
+        }
+    }
+
+    fun repeatRag(exchange: RagExchangeDto) {
+        ragCsv = exchange.csv
+        ragTopK = exchange.topK
+        ragWeb = exchange.web
+        ragHistoryOpen = false
+        askRag(exchange.question)
+    }
+
+    fun searchWeb(id: String) {
+        scope.launch { loadRagWeb(id) }
+    }
+
+    fun focusRag(id: String) {
+        ragFocus = id
+        ragFocusRequests++
+        ragHistoryOpen = false
+    }
+
+    fun clearRag() = request {
+        client.ragClear()
+        ragHistory.clear()
+        ragConfirmClear = false
+    }
+
+    private suspend fun loadRag() {
+        if (!ragLoaded) {
+            val stored = client.ragHistory()
+            ragHistory.clear()
+            ragHistory.addAll(stored)
+            ragLoaded = true
+            stored.lastOrNull()?.let { focusRag(it.id) }
+        }
+        ragStatus = client.ragStatus(refresh = false)
+    }
+
+    private suspend fun loadRagWeb(id: String) {
+        if (id in ragWebLoading) return
+        ragWebLoading += id
+        try {
+            val updated = client.ragWeb(id) ?: return
+            val index = ragHistory.indexOfFirst { it.id == id }
+            if (index >= 0) ragHistory[index] = updated
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            error = describe(failure)
+        } finally {
+            ragWebLoading -= id
+        }
+    }
 
     fun openArticle(id: String, ref: SetRef? = null) = navigate {
         if (ref != null && ref != this.ref) loadSet(ref, null)
@@ -593,6 +710,7 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     }
 
     fun currentRoute(): AppRoute {
+        if (screen == AppScreen.RAG) return AppRoute(AppScreen.RAG)
         val current = ref ?: return AppRoute(AppScreen.AREAS)
         val source = set?.source?.takeIf { set?.sources?.size ?: 0 > 1 }
         val shown = evidence
@@ -610,6 +728,13 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
     }
 
     private suspend fun apply(route: AppRoute) {
+        if (route.screen == AppScreen.RAG) {
+            if (screen != AppScreen.RAG) articlesScreen = screen
+            evidence = null
+            screen = AppScreen.RAG
+            loadScreenData()
+            return
+        }
         val target = route.ref
         if (route.screen == AppScreen.AREAS || target == null) {
             evidence = null
@@ -761,6 +886,7 @@ class AppStore(val client: VinityClient, private val scope: CoroutineScope) {
                 system = client.system()
                 demo = client.demo()
             }
+            AppScreen.RAG -> loadRag()
             else -> Unit
         }
     }

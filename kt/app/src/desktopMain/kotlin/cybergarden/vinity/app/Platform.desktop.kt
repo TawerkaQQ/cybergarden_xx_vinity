@@ -110,3 +110,7 @@ actual fun saveSetting(key: String, value: String?) {
 }
 
 actual fun Modifier.resizeCursor(): Modifier = pointerHoverIcon(PointerIcon(Cursor(Cursor.E_RESIZE_CURSOR)), overrideDescendants = true)
+
+actual fun openUrl(url: String) {
+    Desktop.getDesktop().browse(URI(url))
+}

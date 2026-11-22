@@ -8,6 +8,7 @@ enum class AppScreen(val slug: String) {
     QUALITY("quality"),
     AREAS("areas"),
     ASK("ask"),
+    RAG("rag-chat"),
 }
 
 data class AppRoute(
@@ -20,6 +21,7 @@ data class AppRoute(
     val tab: String? = null,
 ) {
     fun encode(): String {
+        if (screen == AppScreen.RAG) return "/${AppScreen.RAG.slug}"
         if (screen == AppScreen.AREAS || ref == null) return "/${AppScreen.AREAS.slug}"
         val base = "/${ref.profile}/${ref.set}" + (source?.let { "$SOURCE_MARK${it.name.lowercase()}" } ?: "")
         return base + when (screen) {
@@ -45,6 +47,7 @@ data class AppRoute(
             val parts = hash.removePrefix("#").trim('/').split('/').filter { it.isNotEmpty() }
             if (parts.isEmpty()) return null
             if (parts == listOf(AppScreen.AREAS.slug)) return AppRoute(AppScreen.AREAS)
+            if (parts == listOf(AppScreen.RAG.slug)) return AppRoute(AppScreen.RAG)
             if (parts.size < 2) return null
             val set = parts[1].substringBefore(SOURCE_MARK)
             val source = parts[1].substringAfter(SOURCE_MARK, "").takeIf { it.isNotEmpty() }
