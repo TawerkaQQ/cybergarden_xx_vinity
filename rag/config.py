@@ -1,59 +1,100 @@
+import json
 import os
+import re
+from dataclasses import dataclass
 from pathlib import Path
-from dotenv import load_dotenv
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from urllib.parse import urlsplit
 
-load_dotenv()
+from dotenv import dotenv_values, load_dotenv
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
+MODULE_DIR = Path(__file__).resolve().parent
+LOCAL_ENV = MODULE_DIR / ".env"
+WORKSPACE_DATA = MODULE_DIR.parent / "data" / "rag"
+ENV_FILES = (LOCAL_ENV, MODULE_DIR.parent / ".env") if WORKSPACE_DATA.is_dir() else (LOCAL_ENV,)
+for env_file in ENV_FILES:
+    load_dotenv(env_file)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data" / "rag"
-QDRANT_URL = os.getenv("QDRANT_URL")
 
-def get_embeddings():
-    if LLM_PROVIDER == "ollama":
-        return OllamaEmbeddings(
-            model=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        )
-    return OpenAIEmbeddings(
-        model=os.getenv("REMOTE_EMBEDDING_MODEL"),
-        base_url=os.getenv("REMOTE_BASE_URL"),
-        api_key=os.getenv("REMOTE_API_KEY", "not-needed"),
-        check_embedding_ctx_length=False,
-    )
+def data_directory() -> Path:
+    if setting := os.getenv("RAG_DATA_DIR", "").strip():
+        return (MODULE_DIR / Path(setting).expanduser()).resolve()
+    local = MODULE_DIR / "data"
+    return WORKSPACE_DATA if WORKSPACE_DATA.is_dir() and not local.is_dir() else local
 
-def get_llm():
-    if LLM_PROVIDER == "ollama":
-        return ChatOllama(
-            model=os.getenv("OLLAMA_LLM_MODEL", "llama3.2:1b"),
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            temperature=0,
-        )
-    return ChatOpenAI(
-        model=os.getenv("REMOTE_LLM_MODEL"),
-        base_url=os.getenv("REMOTE_BASE_URL"),
-        api_key=os.getenv("REMOTE_API_KEY", "not-needed"),
-        temperature=0,
-    )
 
-def get_embedding_dim() -> int:
-    if LLM_PROVIDER == "ollama":
-        return int(os.getenv("OLLAMA_EMBEDDING_DIMENSION", "768"))
-    return int(os.getenv("REMOTE_EMBEDDING_DIMENSION"))
+DATA_DIR = data_directory()
+QDRANT_DIR = MODULE_DIR / ".qdrant"
 
-def get_embedding_model_name() -> str:
-    if LLM_PROVIDER == "ollama":
-        return os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-    return os.getenv("REMOTE_EMBEDDING_MODEL")
 
-def get_chunk_size() -> int:
-    return int(os.getenv("CHUNK_SIZE", "1000"))
+@dataclass(frozen=True, repr=False)
+class ChatSettings:
+    url: str
+    profile: str
+    token: str
+    options: dict[str, object]
 
-def get_chunk_overlap() -> int:
-    return int(os.getenv("CHUNK_OVERLAP", "200"))
 
-def get_top_k() -> int:
-    return int(os.getenv("TOP_K", "3"))
+def get_searxng_url() -> str:
+    return os.getenv("SEARXNG_URL", "").strip().rstrip("/")
+
+
+def get_chat_settings() -> ChatSettings:
+    base_url = os.getenv("CHAT_BASE_URL", "").strip().rstrip("/")
+    profile = os.getenv("CHAT_PROFILE", "").strip()
+    token = os.getenv("CHAT_API_KEY", "").strip()
+    options = {}
+    if not base_url and not profile:
+        prefix = configured_profile_prefix()
+        if prefix:
+            base_url = os.getenv(f"{prefix}_BASE_URL", "").strip().rstrip("/")
+            profile = os.getenv(f"{prefix}_MODEL", "").strip()
+            token = os.getenv(f"{prefix}_API_KEY", "").strip()
+            options = {"chat_template_kwargs": {"enable_thinking": False}}
+
+    url = urlsplit(base_url)
+    if url.scheme not in {"http", "https"} or not url.hostname or url.query or url.fragment:
+        raise ValueError("Укажите адрес сервиса в CHAT_BASE_URL")
+    if not profile:
+        raise ValueError("Укажите профиль сервиса в CHAT_PROFILE")
+    if raw_options := os.getenv("CHAT_REQUEST_OPTIONS", "").strip():
+        try:
+            options = json.loads(raw_options)
+        except json.JSONDecodeError as error:
+            raise ValueError("CHAT_REQUEST_OPTIONS должен содержать объект JSON") from error
+        if not isinstance(options, dict):
+            raise ValueError("CHAT_REQUEST_OPTIONS должен содержать объект JSON")
+    if not url.path:
+        base_url += "/v1"
+    endpoint = base_url.removesuffix("/chat/completions") + "/chat/completions"
+    return ChatSettings(endpoint, profile, token, options)
+
+
+def configured_profile_prefix() -> str | None:
+    declared = {key for path in ENV_FILES for key in dotenv_values(path)}
+    candidates = (key.removesuffix("_BASE_URL") for key in declared if key.endswith("_BASE_URL"))
+    prefixes = {
+        prefix for prefix in candidates if prefix != "CHAT" and f"{prefix}_MODEL" in declared
+        and os.getenv(f"{prefix}_BASE_URL") and os.getenv(f"{prefix}_MODEL")
+    }
+    if len(prefixes) > 1:
+        raise ValueError("В .env несколько профилей. Укажите CHAT_BASE_URL и CHAT_PROFILE")
+    return next(iter(prefixes), None)
+
+
+def get_top_k(default: int = 3) -> int:
+    return int(os.getenv("TOP_K", str(default)))
+
+
+def get_qdrant_url() -> str:
+    url = os.getenv("QDRANT_URL", "http://127.0.0.1:6333").strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.query or parsed.fragment:
+        raise ValueError("Укажите HTTP-адрес Qdrant в QDRANT_URL")
+    return url
+
+
+def collection_name(kind: str) -> str:
+    prefix = os.getenv("QDRANT_COLLECTION_PREFIX", "rag").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", prefix):
+        raise ValueError("QDRANT_COLLECTION_PREFIX должен содержать буквы, цифры, дефисы или подчёркивания")
+    return f"{prefix}_{kind}"

@@ -1,8 +1,4 @@
-langchain
-langchain-qdrant
-langchain-ollama
-langchain-openai
-langchain-text-splitters
-qdrant-client
-python-dotenv
 pypdf
+python-dotenv
+qdrant-client>=1.20,<2
+fastembed>=0.9,<1
