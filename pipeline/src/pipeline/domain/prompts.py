@@ -6,7 +6,7 @@ from pipeline.domain.article import Article
 from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
 from pipeline.domain.profile import Table
 
-ENGINE_VERSION = "5"
+ENGINE_VERSION = "6"
 ROW_LABEL = "row_label"
 
 SYSTEM = """\
@@ -22,8 +22,6 @@ SYSTEM = """\
 - Для поля со списком допустимых значений — только значение из списка или null. Если формулировка статьи не укладывается в список, исходную формулировку пиши в note.
 - key — короткий ключ записи, уникальный внутри статьи: имя таблицы и номер, например {example_key}. В refs — key записей той таблицы, на которую указывает ссылка.
 - Примечания (note, exclusion_reason) — по-русски, коротко.
-- Ответ — компактный JSON одной строкой: без переносов строк и без пробелов между элементами.
-- Если в ответе есть поле count, сначала посчитай, сколько элементов выпишешь в список, запиши это число в count, затем выпиши их все.
 
 Таблицы набора данных:
 
