@@ -49,7 +49,7 @@ fun main() {
     val pages = { ref: SetRef -> FallbackPageTextSource(JsonPageTextSource(workspace.pages(ref.profile)), PdfPageTextSource(inspector) { library.pdf(ref, it) }) }
     val questions = AskService(library, pages, chat, config.value("rag.url", "RAG_URL")?.let(::RemoteRag))
     val ragSettings = RagSettings(config.value("rag.python")?.let { Path.of(it) } ?: RagProcess.defaultPython(root), settings.baseUrl, settings.model, settings.apiKey, config.value("rag.qdrant", "QDRANT_URL"))
-    val rag = RagService(RagProcess(root, ragSettings), root.resolve("work").resolve("rag").resolve("history.json"))
+    val rag = RagService(RagProcess(root, ragSettings), root.resolve("work").resolve("rag-chat").resolve("history.json"))
     println("Vinity: http://localhost:$port · данные $root · конфиг ${config.source ?: "не задан"} · модель ${settings.model ?: "не настроена"}")
     insights.warmUp()
     embeddedServer(Netty, port = port) { vinity(service, insights, passports, questions, rag) }.start(wait = true)
