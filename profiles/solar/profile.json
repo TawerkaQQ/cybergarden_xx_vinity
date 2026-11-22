@@ -189,8 +189,11 @@
      "divisor": {"table": "measurements", "via": "measurement_id", "value": "light_intensity", "unit": "intensity_unit", "target_unit": "mW/cm2", "default": 100}},
     {"rule": "agreement", "name": "eqe_consistency", "metrics": ["Jsc", "Jsc_EQE"], "by": ["device_id"], "tolerance": 0.05},
     {"rule": "order", "name": "champion_vs_mean", "metrics": ["PCE", "stabilized_PCE"], "lower": "mean", "upper": "champion"},
-    "voc_limit",
-    "hysteresis_index"
+    {"rule": "bound", "name": "voc_limit", "metric": "Voc",
+     "upper": {"table": "materials", "value": "bandgap_value", "unit": "bandgap_unit", "label": "ширина запрещённой зоны поглотителя", "paths": [["material_id"], ["device_id", "absorber_material_id"]]},
+     "unless": {"table": "devices", "via": "device_id", "column": "device_type", "values": ["minimodule", "module"]}},
+    {"rule": "relative_difference", "name": "hysteresis_index", "target": "HI", "metric": "PCE", "scale": 100, "tolerance": 1.0, "by": ["device_id"],
+     "condition": {"table": "measurements", "via": "measurement_id", "column": "scan_direction", "first": "reverse", "second": "forward"}}
   ],
   "display": {
     "record": {

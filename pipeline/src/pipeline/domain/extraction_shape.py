@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pipeline.domain.extract import ExtractResult
+from pipeline.domain.numbers import parse_number
 from pipeline.domain.profile import PUBLICATION_ID, Profile, Table
 
 IN_SCOPE = "in_scope"
@@ -27,6 +28,7 @@ CONTRACT_MENTION_ORDER = (
 NULLABLE_STRING = {"type": ["string", "null"]}
 NULLABLE_VALUE = {"type": ["string", "number", "null"]}
 STRING = {"type": "string"}
+PAGE = {"type": ["integer", "string"]}
 VERBATIM_MENTION_KEYS = ("page", "refs", "fields")
 
 
@@ -82,7 +84,7 @@ class MentionShape:
     def schema(self) -> dict[str, Any]:
         return strict_object(
             {
-                "page": {"type": "integer"},
+                "page": PAGE,
                 "section": NULLABLE_VALUE,
                 "table": NULLABLE_VALUE,
                 "figure": NULLABLE_VALUE,
@@ -135,7 +137,7 @@ class ExtractionShape:
         table = strict_object(
             {
                 "table": STRING,
-                "page": {"type": "integer"},
+                "page": PAGE,
                 "columns": {"type": "array", "items": STRING},
                 "rows": {"type": "array", "items": STRING},
             }
@@ -203,3 +205,12 @@ class ExtractionShape:
     def _contract_mention(mention: dict[str, Any]) -> dict[str, Any]:
         contract = {key: mention[key] if key in VERBATIM_MENTION_KEYS else as_text(mention[key]) for key in CONTRACT_MENTION_ORDER}
         return {**contract, "fields": texts(mention["fields"])}
+
+
+def page_number(value: Any) -> int | None:
+    number = parse_number(as_text(value))
+    return int(number) if number is not None and number >= 1 else None
+
+
+def with_page_number(item: dict[str, Any]) -> dict[str, Any]:
+    return {**item, "page": page_number(item.get("page"))}

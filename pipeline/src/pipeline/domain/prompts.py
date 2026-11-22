@@ -6,7 +6,7 @@ from pipeline.domain.article import Article
 from pipeline.domain.extraction_shape import IN_SCOPE, ExtractionShape
 from pipeline.domain.profile import Table
 
-ENGINE_VERSION = "5"
+ENGINE_VERSION = "6"
 ROW_LABEL = "row_label"
 
 SYSTEM = """\

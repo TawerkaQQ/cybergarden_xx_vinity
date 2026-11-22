@@ -50,6 +50,8 @@ class Checker:
             "product": self._product,
             "agreement": self._agreement,
             "order": self._order,
+            "bound": self._bound,
+            "relative_difference": self._relative_difference,
         }
 
     def check(self, tables: dict[str, list[dict[str, str]]]) -> tuple[list[dict[str, str]], Counter]:
@@ -210,6 +212,101 @@ class Checker:
                         )
                         issues.append(Issue(mean.publication_id, (mean.row, best.row), spec.name, description))
         return issues
+
+    def _bound(self, spec: CheckSpec, values: list[Value], tables: dict) -> list[Issue]:
+        upper = spec.params["upper"]
+        target = self._profile.table(upper["table"])
+        scale = float(spec.params.get("scale", 1))
+        issues = []
+        for value in values:
+            if value.metric != spec.params["metric"] or self._excluded(spec, value, tables):
+                continue
+            record = next(
+                (found for path in upper["paths"] if (found := self._follow(value.row, path, target.name, tables))), None
+            )
+            limit = parse_number(record.get(upper["value"])) if record else None
+            if limit is None or value.number < limit * scale:
+                continue
+            label = upper.get("label", upper["value"])
+            description = (
+                f"{value.metric} {value.text} {value.unit} не меньше, чем {label} "
+                f"{record[upper['value']]} {record.get(upper.get('unit', ''), '')} ({target.name} {record[target.id]})"
+            ).replace("  ", " ")
+            issues.append(Issue(value.publication_id, (value.row,), spec.name, description))
+        return issues
+
+    def _follow(self, row: dict[str, str], path: list[str], target: str, tables: dict) -> dict[str, str] | None:
+        current, table = row, self._profile.values_table
+        for column in path:
+            record_id = current.get(column, "")
+            linked = self._profile.table(table.references[column]) if column in table.references else None
+            if not record_id or linked is None:
+                return None
+            current = next(
+                (
+                    record
+                    for record in tables.get(linked.name, [])
+                    if record[PUBLICATION_ID] == row[PUBLICATION_ID] and record[linked.id] == record_id
+                ),
+                None,
+            )
+            if current is None:
+                return None
+            table = linked
+        return current if table.name == target else None
+
+    def _relative_difference(self, spec: CheckSpec, values: list[Value], tables: dict) -> list[Issue]:
+        condition = spec.params["condition"]
+        by = spec.params["by"]
+        tolerance = float(spec.params["tolerance"])
+        scale = float(spec.params.get("scale", 1))
+        groups: dict[tuple, list[Value]] = {}
+        for value in values:
+            key = tuple(value.row.get(column, "") for column in by)
+            if all(key):
+                groups.setdefault((value.publication_id, key), []).append(value)
+        issues = []
+        for group in groups.values():
+            firsts = self._by_condition(group, spec.params["metric"], condition, condition["first"], tables)
+            seconds = self._by_condition(group, spec.params["metric"], condition, condition["second"], tables)
+            expected = [
+                scale * (first.number - second.number) / denominator.number
+                for first in firsts
+                for second in seconds
+                for denominator in (first, second)
+                if denominator.number
+            ]
+            if not expected:
+                continue
+            for target in unique_by_number([value for value in group if value.metric == spec.params["target"]]):
+                closest = min(expected, key=lambda number: abs(number - target.number))
+                if abs(closest - target.number) > tolerance:
+                    description = (
+                        f"{spec.params['target']} {target.text} {target.unit} не согласуется с расчётом по "
+                        f"{spec.params['metric']} при {condition['column']} {condition['first']} и {condition['second']}: "
+                        f"{closest:.2f} {target.unit}"
+                    ).replace("  ", " ")
+                    records = (target.row, *(value.row for value in firsts + seconds))
+                    issues.append(Issue(target.publication_id, records, spec.name, description))
+        return issues
+
+    def _by_condition(self, group: list[Value], metric: str, condition: dict[str, Any], expected: str, tables: dict) -> list[Value]:
+        table = self._profile.table(condition["table"])
+        matched = []
+        for value in group:
+            if value.metric != metric:
+                continue
+            record = next(
+                (
+                    record
+                    for record in tables.get(table.name, [])
+                    if record[PUBLICATION_ID] == value.publication_id and record[table.id] == value.row.get(condition["via"], "")
+                ),
+                None,
+            )
+            if record and record.get(condition["column"]) == expected:
+                matched.append(value)
+        return unique_by_number(matched)
 
     def _excluded(self, spec: CheckSpec, value: Value, tables: dict) -> bool:
         unless = spec.params.get("unless")
