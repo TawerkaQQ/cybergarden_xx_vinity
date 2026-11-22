@@ -29,6 +29,7 @@ NULLABLE_STRING = {"type": ["string", "null"]}
 NULLABLE_VALUE = {"type": ["string", "number", "null"]}
 STRING = {"type": "string"}
 PAGE = {"type": ["integer", "string"]}
+COUNT = {"type": ["integer", "string"]}
 VERBATIM_MENTION_KEYS = ("page", "refs", "fields")
 
 
@@ -130,7 +131,7 @@ class ExtractionShape:
         return strict_object({"publication": publication, "records": records})
 
     def mentions_schema(self) -> dict[str, Any]:
-        return strict_object({"mentions": {"type": "array", "items": self.mention.schema()}})
+        return strict_object({"count": COUNT, "mentions": {"type": "array", "items": self.mention.schema()}})
 
     @staticmethod
     def tables_schema() -> dict[str, Any]:
@@ -142,7 +143,7 @@ class ExtractionShape:
                 "rows": {"type": "array", "items": STRING},
             }
         )
-        return strict_object({"tables": {"type": "array", "items": table}})
+        return strict_object({"count": COUNT, "tables": {"type": "array", "items": table}})
 
     def result(
         self, publication_id: str, prompt_version: str, structure: dict[str, Any], mentions: dict[str, Any]
